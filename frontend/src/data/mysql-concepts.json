@@ -1,0 +1,44 @@
+{
+  "concepts": [
+    {
+      "concept": "SELECT FROM - Querying Data",
+      "info": "The SELECT FROM statement is the foundation of retrieving data from your database. Basic syntax: SELECT column1, column2 FROM table_name; Use * to select all columns, specify column names when possible, use AS for aliases."
+    },
+    {
+      "concept": "WHERE - Filtering Data",
+      "info": "The WHERE clause filters rows based on specified conditions. Basic syntax: SELECT columns FROM table_name WHERE condition; Common operators: =, !=, <>, >, <, >=, <=, BETWEEN, IN, LIKE, IS NULL."
+    },
+    {
+      "concept": "INNER JOIN - Combining Tables",
+      "info": "INNER JOIN retrieves rows that have matching values in both tables. Basic syntax: SELECT columns FROM table1 INNER JOIN table2 ON table1.column = table2.column; Only returns rows with matches in both tables, use table aliases for cleaner code."
+    },
+    {
+      "concept": "GROUP BY - Aggregating Data",
+      "info": "GROUP BY groups rows with the same values into summary rows. Basic syntax: SELECT column, aggregate_function(column) FROM table_name GROUP BY column; Common functions: COUNT(), SUM(), AVG(), MAX(), MIN()."
+    },
+    {
+      "concept": "INSERT - Adding Data",
+      "info": "The INSERT statement adds new rows to a table. Basic syntax: INSERT INTO table_name (column1, column2) VALUES (value1, value2); Always specify column names, ensure values match data types, use transactions for multiple inserts."
+    },
+    {
+      "concept": "UPDATE - Modifying Data",
+      "info": "The UPDATE statement modifies existing records in a table. Basic syntax: UPDATE table_name SET column1 = value1 WHERE condition; WARNING: Always use WHERE clause to avoid updating all rows!"
+    },
+    {
+      "concept": "DELETE - Removing Data",
+      "info": "The DELETE statement removes rows from a table. Basic syntax: DELETE FROM table_name WHERE condition; WARNING: Without WHERE clause, all rows will be deleted!"
+    },
+    {
+      "concept": "PRIMARY KEY - Unique Identifiers",
+      "info": "A PRIMARY KEY uniquely identifies each record in a table. Must contain unique values, cannot contain NULL values, only one per table. Often used with AUTO_INCREMENT. Syntax: column_name INT PRIMARY KEY."
+    },
+    {
+      "concept": "FOREIGN KEY - Referential Integrity",
+      "info": "A FOREIGN KEY creates a link between two tables, ensuring referential integrity. Syntax: FOREIGN KEY (column) REFERENCES table(column). Actions: CASCADE (delete/update child when parent changes), SET NULL."
+    },
+    {
+      "concept": "Subquery - Nested Queries",
+      "info": "A subquery is a query nested inside another query. Types: WHERE clause, IN operator, FROM clause (derived table), correlated. Use JOINs when possible for better performance, test subqueries independently."
+    }
+  ]
+}
