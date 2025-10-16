@@ -171,7 +171,7 @@ class UserProgressViewSet(viewsets.ReadOnlyModelViewSet):
         
         total_problems = Problem.objects.filter(is_active=True).count()
         completed_problems = progress.filter(completed=True).count()
-        total_attempts = progress.aggregate(total=models.Sum('attempts'))['total'] or 0
+        total_attempts = progress.aggregate(total=Sum('attempts'))['total'] or 0
         
         return Response({
             'total_problems': total_problems,
