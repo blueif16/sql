@@ -7,7 +7,7 @@ import { themes } from '../data/themes';
 import { getSections } from '../utils/sections';
 import { executeValidQuery, generateUserOutput } from '../utils/queryExecutor';
 
-const SQLLearningPlatform = () => {
+const SQLLearningPlatform = ({ currentTheme = 'default', onThemeChange }) => {
   const [messages, setMessages] = useState([]);
   const [currentInput, setCurrentInput] = useState('');
   const [phase, setPhase] = useState('gallery');
@@ -26,7 +26,6 @@ const SQLLearningPlatform = () => {
   const [expandedSections, setExpandedSections] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState('practice');
-  const [currentTheme, setCurrentTheme] = useState('default');
   
   const messagesEndRef = useRef(null);
 
@@ -222,7 +221,7 @@ const SQLLearningPlatform = () => {
   };
 
   return (
-    <div className="h-screen bg-gray-50 flex select-none">
+    <div className="h-full bg-gray-50 flex select-none">
       <style>{`
         .tiny-scrollbar::-webkit-scrollbar {
           width: 1px;
@@ -298,7 +297,7 @@ const SQLLearningPlatform = () => {
         rightPanelTab={rightPanelTab}
         setRightPanelTab={setRightPanelTab}
         currentTheme={currentTheme}
-        setCurrentTheme={setCurrentTheme}
+        setCurrentTheme={onThemeChange}
         sections={getSections(currentTheme)}
         expandedSections={expandedSections}
         toggleSection={toggleSection}

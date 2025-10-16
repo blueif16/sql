@@ -9,6 +9,8 @@ A comprehensive SQL learning platform built with React frontend and Django backe
 - **Progressive Learning**: Structured sections covering SELECT, ORDER BY, WHERE, and DISTINCT
 - **Real-time Query Execution**: See query results as you type
 - **User Progress Tracking**: Track your learning progress and completion
+- **User Profile System**: View detailed statistics, submission history, and problem stats
+- **Navigation Bar**: Easy access to profile and authentication features
 - **Responsive Design**: Modern UI built with Tailwind CSS
 
 ## Tech Stack
@@ -34,6 +36,11 @@ MySQLtutor/
 ├── frontend/                 # React frontend
 │   ├── src/
 │   │   ├── components/       # React components
+│   │   │   ├── NavBar.jsx    # Navigation bar with user menu
+│   │   │   ├── ProfilePage.jsx  # User profile and stats
+│   │   │   └── ...
+│   │   ├── config/          # Configuration files
+│   │   │   └── constants.js  # Centralized constants
 │   │   ├── data/            # Theme data
 │   │   ├── utils/           # Utility functions
 │   │   └── ...
@@ -124,6 +131,38 @@ The frontend will be available at `http://localhost:5173`
 
 The backend API will be available at `http://localhost:8000`
 
+## User Features
+
+### Navigation Bar
+- **用户头像**: 显示当前登录用户的头像
+- **下拉菜单**: 点击头像查看菜单选项
+  - 个人资料：查看详细的用户统计信息
+  - 登录/退出：用户认证管理
+
+### Profile Page (个人资料页)
+个人资料页面包含三个主要标签：
+
+#### 概览 (Overview)
+- **概念掌握情况**: 可视化展示各SQL概念的掌握程度
+- **最近提交**: 显示最近的提交记录和结果
+
+#### 提交历史 (Submissions)
+- 完整的提交历史记录
+- 显示题目、状态、提示使用数、用时和提交时间
+- 通过/失败状态标识
+
+#### 统计数据 (Stats)
+- **问题统计**: 按题目展示尝试次数、难度、通过状态等
+- **概念统计**: 显示每个SQL概念的准确率、尝试次数和平均用时
+- **总体统计卡片**: 总提交数、正确提交数、题目总数、正确率
+
+### 数据结构映射
+基于 `setup.sql` 的数据库结构：
+- **users**: 用户基本信息 (id, username, email, created_at)
+- **Submissions**: 提交记录 (problem_id, user_id, sql_code, is_correct, submitted_at, hints_used, time_spent_seconds)
+- **user_problem_stats**: 用户问题统计 (total_attempts, passed, attempts_until_pass, best_time_seconds)
+- **user_concept_stats**: 用户概念统计 (total_attempts, correct_attempts, accuracy, avg_time_seconds)
+
 ## API Endpoints
 
 - `GET /api/themes/` - List all themes
@@ -134,6 +173,10 @@ The backend API will be available at `http://localhost:8000`
 - `POST /api/problems/{id}/submit_query/` - Submit a query for a problem
 - `GET /api/problems/{id}/progress/` - Get user progress for a problem
 - `GET /api/progress/stats/` - Get user statistics
+- `GET /api/user/profile/` - Get user profile with submissions and stats
+- `GET /api/user/submissions/` - Get user submission history
+- `GET /api/user/problem-stats/` - Get user problem statistics
+- `GET /api/user/concept-stats/` - Get user concept statistics
 
 ## Learning Path
 
@@ -169,6 +212,9 @@ Magical world dataset with students and spells tables.
 - Components are organized by functionality
 - Tailwind CSS for styling
 - Responsive design for mobile and desktop
+- Centralized configuration in `src/config/constants.js`
+- Client-side routing for navigation between pages
+- User session management with localStorage
 
 ### Backend Development
 - Django REST Framework for API
