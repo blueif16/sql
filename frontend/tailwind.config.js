@@ -7,5 +7,7 @@ export default {
   theme: {
     extend: {},
   },
-  plugins: [],
+  plugins: [
+    require('@tailwindcss/typography'), // Typography插件用于美化markdown渲染
+  ],
 }

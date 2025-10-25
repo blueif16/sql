@@ -3,42 +3,49 @@ import { Send, BookOpen, CheckCircle, X, RotateCcw, ChevronRight, ChevronDown, G
 import ChatInterface from './ChatInterface';
 import RightPanel from './RightPanel';
 import DraggableDivider from './DraggableDivider';
-import { themes } from '../data/themes';
-import { getSections } from '../utils/sections';
-import { executeValidQuery, generateUserOutput } from '../utils/queryExecutor';
+import { conceptAPI, problemAPI } from '../services/api';
 
-const SQLLearningPlatform = ({ currentTheme = 'default', onThemeChange }) => {
+const SQLLearningPlatform = () => {
   const [messages, setMessages] = useState([]);
   const [currentInput, setCurrentInput] = useState('');
   const [phase, setPhase] = useState('gallery');
-  const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
-  const [currentConceptIndex, setCurrentConceptIndex] = useState(0);
-  const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
-  const [showTheoryNotification, setShowTheoryNotification] = useState(false);
-  const [showProblemNotification, setShowProblemNotification] = useState(false);
-  const [completedProblems, setCompletedProblems] = useState(0);
+  const [concepts, setConcepts] = useState({ beginner: [], intermediate: [], advanced: [] }); // 后端概念数据按难度分组
+  const [currentProblem, setCurrentProblem] = useState(null); // 当前正在练习的问题
+  const [selectedConcept, setSelectedConcept] = useState(null); // 当前选中的概念
   const [lastResult, setLastResult] = useState(null);
   const [waitingForNext, setWaitingForNext] = useState(false);
   const [chatMode, setChatMode] = useState('solve');
   const [leftPanelWidth, setLeftPanelWidth] = useState(50);
-  const [showSectionTransition, setShowSectionTransition] = useState(false);
   const [viewMode, setViewMode] = useState('gallery');
-  const [expandedSections, setExpandedSections] = useState([]);
+  const [expandedDifficulties, setExpandedDifficulties] = useState(['beginner']); // 展开的难度级别
   const [isDragging, setIsDragging] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState('practice');
+  const [isLoading, setIsLoading] = useState(false);
   
   const messagesEndRef = useRef(null);
 
-  const getCurrentThemeData = () => themes[currentTheme] || themes.default;
-
-  useEffect(() => {
+  useEffect(() => { // 初始化：显示欢迎消息并加载概念数据
     setMessages([{
       id: 1,
       type: 'ai',
-      content: 'Welcome to SQL Learning Platform!\n\nChoose a concept from the gallery on the right to start learning SQL fundamentals.\n\nClick on sections to expand and see available concepts.',
+      content: 'Welcome to SQL Learning Platform!\n\nChoose a concept from the gallery on the right to start learning SQL fundamentals.\n\nClick on difficulty levels to expand and see available concepts.',
       timestamp: new Date()
     }]);
+    loadConcepts();
   }, []);
+
+  const loadConcepts = async () => { // 从后端加载概念数据
+    try {
+      setIsLoading(true);
+      const data = await conceptAPI.getConceptsWithProgress();
+      setConcepts(data);
+    } catch (error) {
+      console.error('Failed to load concepts:', error);
+      addMessage('加载概念失败，请刷新页面重试。', 'ai');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -58,34 +65,61 @@ const SQLLearningPlatform = ({ currentTheme = 'default', onThemeChange }) => {
     setMessages(prev => [...prev, newMessage]);
   };
 
-  const toggleSection = (sectionIndex) => {
-    setExpandedSections(prev => 
-      prev.includes(sectionIndex) 
-        ? prev.filter(s => s !== sectionIndex)
-        : [...prev, sectionIndex]
+  const toggleDifficulty = (difficulty) => { // 切换难度级别的展开/折叠
+    setExpandedDifficulties(prev => 
+      prev.includes(difficulty) 
+        ? prev.filter(d => d !== difficulty)
+        : [...prev, difficulty]
     );
   };
 
-  const jumpToConcept = (sectionIndex, conceptIndex) => {
-    setCurrentSectionIndex(sectionIndex);
-    setCurrentConceptIndex(conceptIndex);
-    setCurrentProblemIndex(0);
-    setCompletedProblems(0);
+  const startConcept = async (concept) => { // 选择概念并开始学习/练习
+    setSelectedConcept(concept);
+    setCurrentProblem(null);
     setLastResult(null);
     setWaitingForNext(false);
     setViewMode('single');
-    setPhase('problems');
-    setShowTheoryNotification(true);
-    setShowProblemNotification(true);
-    setRightPanelTab('practice');
+    setPhase('learning');
+    setRightPanelTab('learn');
     
-    const sections = getSections(currentTheme);
-    const conceptName = sections[sectionIndex].concepts[conceptIndex].name;
-    addMessage(`Starting ${conceptName}!`, 'user');
+    addMessage(`Starting ${concept.name}!`, 'user');
     
     setTimeout(() => {
-      addMessage("Great choice! Your first challenge is ready. Check the hint if you need help!", 'ai');
+      addMessage(`Let's learn about ${concept.name}. Check the Learn tab to understand the concept, then switch to Practice to try some problems!`, 'ai');
     }, 500);
+  };
+
+  const startPractice = async () => { // 开始练习：加载或生成问题
+    if (!selectedConcept) return;
+    
+    setRightPanelTab('practice');
+    setPhase('practicing');
+    addMessage("Let me find a problem for you...", 'ai');
+    
+    try {
+      setIsLoading(true);
+      const params = { primary_concept: selectedConcept.name, difficulty: selectedConcept.difficulty_level };
+      const response = await problemAPI.getProblems(params);
+      
+      if (response.results && response.results.length > 0) {
+        const problem = response.results[0];
+        console.log('[SQLLearningPlatform] 接收到问题数据:', problem); // 日志：接收到的问题数据
+        console.log('[SQLLearningPlatform] SQL Schema:', problem.sql_schema); // 日志：SQL Schema内容
+        setCurrentProblem(problem);
+        setTimeout(() => {
+          addMessage("Great! Here's your problem. Try to solve it!", 'ai');
+        }, 500);
+      } else {
+        setTimeout(() => {
+          addMessage("No problems available for this concept yet. Would you like me to generate one?", 'ai');
+        }, 500);
+      }
+    } catch (error) {
+      console.error('Failed to load problems:', error);
+      addMessage('Failed to load problems. Please try again.', 'ai');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleMouseMove = (e) => {
@@ -115,105 +149,110 @@ const SQLLearningPlatform = ({ currentTheme = 'default', onThemeChange }) => {
     }
   }, [isDragging]);
 
-  const handleNextTask = () => {
+  const handleNextProblem = async () => { // 加载下一个问题
     setWaitingForNext(false);
     setLastResult(null);
+    setCurrentProblem(null);
     addMessage("Let's practice more!", 'user');
     
-    setTimeout(() => {
-      addMessage("Here's another challenge for you!", 'ai');
-    }, 500);
-  };
-
-  const handleNextConcept = () => {
-    const sections = getSections(currentTheme);
-    const currentSection = sections[currentSectionIndex];
-    
-    let nextSectionIndex = currentSectionIndex;
-    let nextConceptIndex = currentConceptIndex + 1;
-    
-    if (nextConceptIndex >= currentSection.concepts.length) {
-      nextSectionIndex++;
-      nextConceptIndex = 0;
-    }
-    
-    if (nextSectionIndex < sections.length) {
-      setWaitingForNext(false);
-      setLastResult(null);
-      setCurrentSectionIndex(nextSectionIndex);
-      setCurrentConceptIndex(nextConceptIndex);
-      setCurrentProblemIndex(0);
-      setCompletedProblems(0);
-      setRightPanelTab('practice');
-      addMessage("Starting new concept!", 'user');
+    try {
+      setIsLoading(true);
+      const params = { primary_concept: selectedConcept.name };
+      const response = await problemAPI.getProblems(params);
       
-      setTimeout(() => {
-        addMessage("Here's your first challenge with this new concept!", 'ai');
-      }, 500);
-    } else {
-      setPhase('completed');
-      addMessage("Perfect! You've mastered all SQL concepts!", 'ai');
+      if (response.results && response.results.length > 0) {
+        const randomProblem = response.results[Math.floor(Math.random() * response.results.length)];
+        console.log('[SQLLearningPlatform] 接收到下一个问题:', randomProblem); // 日志：下一个问题数据
+        console.log('[SQLLearningPlatform] SQL Schema:', randomProblem.sql_schema); // 日志：SQL Schema内容
+        setCurrentProblem(randomProblem);
+        setTimeout(() => {
+          addMessage("Here's another challenge for you!", 'ai');
+        }, 500);
+      } else {
+        setTimeout(() => {
+          addMessage("No more problems available. Try selecting a different concept!", 'ai');
+        }, 500);
+      }
+    } catch (error) {
+      console.error('Failed to load next problem:', error);
+      addMessage('Failed to load next problem. Please try again.', 'ai');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleSubmitAnswer = () => {
+  const handleBackToGallery = () => { // 返回概念画廊
+    setViewMode('gallery');
+    setPhase('gallery');
+    setSelectedConcept(null);
+    setCurrentProblem(null);
+    setLastResult(null);
+    setWaitingForNext(false);
+    addMessage("Back to concept gallery", 'user');
+  };
+
+  const handleSubmitAnswer = async () => { // 提交SQL答案
     if (!currentInput.trim()) return;
 
     const userAnswer = currentInput.trim();
     addMessage(userAnswer, 'user');
     setCurrentInput('');
     
-    if (viewMode === 'gallery' || chatMode === 'ask') {
+    if (chatMode === 'ask') { // 问答模式：简单回答SQL相关问题
       setTimeout(() => {
         const input = userAnswer.toLowerCase();
-        const sections = getSections(currentTheme);
-        const currentConcept = sections[currentSectionIndex].concepts[currentConceptIndex].name;
+        const conceptName = selectedConcept?.name || 'SQL';
         
         if (input.includes('select')) {
-          addMessage(`SELECT chooses which columns you want from a table. In ${currentConcept}, you use SELECT to specify your data.`, 'ai');
+          addMessage(`SELECT chooses which columns you want from a table. In ${conceptName}, you use SELECT to specify your data.`, 'ai');
         } else if (input.includes('from')) {
-          addMessage("FROM specifies which table to get data from. Always use the correct table name like 'customers' or 'products'.", 'ai');
+          addMessage("FROM specifies which table to get data from. Always use the correct table name.", 'ai');
         } else if (input.includes('order by')) {
           addMessage("ORDER BY sorts your results. Use ASC for ascending (A-Z, 1-9) or DESC for descending (Z-A, 9-1).", 'ai');
         } else if (input.includes('where')) {
           addMessage("WHERE filters data based on conditions. Use = for exact matches, AND for multiple conditions.", 'ai');
-        } else if (input.includes('distinct')) {
-          addMessage("DISTINCT removes duplicate rows from your results. Use SELECT DISTINCT column_name to get unique values only.", 'ai');
+        } else if (input.includes('join')) {
+          addMessage("JOIN combines rows from two or more tables based on a related column. INNER JOIN returns matching rows only.", 'ai');
         } else {
-          addMessage(`I'm here to help with ${currentConcept}! Ask about any SQL concepts.`, 'ai');
+          addMessage(`I'm here to help with ${conceptName}! Ask about any SQL concepts.`, 'ai');
         }
       }, 800);
       return;
     }
 
-    const sections = getSections(currentTheme);
-    const currentSection = sections[currentSectionIndex];
-    const currentConcept = currentSection.concepts[currentConceptIndex];
-    const currentProblem = currentConcept.problems[currentProblemIndex];
-    const userOutput = generateUserOutput(userAnswer, currentTheme);
-    const expectedOutput = currentProblem.expectedOutput;
+    // 解题模式：提交答案到后端验证
+    if (!currentProblem) {
+      addMessage("Please select a problem first!", 'ai');
+      return;
+    }
     
-    const isCorrect = JSON.stringify(userOutput) === JSON.stringify(expectedOutput);
-    
-    setLastResult({
-      userQuery: userAnswer,
-      userOutput,
-      expectedOutput,
-      isCorrect
-    });
+    try {
+      setIsLoading(true);
+      const response = await problemAPI.submitQuery(currentProblem.id, { sql_code: userAnswer });
+      
+      setLastResult({
+        userQuery: userAnswer,
+        isCorrect: response.is_correct,
+        message: response.message
+      });
 
-    setTimeout(() => {
-      if (isCorrect) {
-        addMessage("Correct! Well done.", 'ai');
-        const newCompletedProblems = completedProblems + 1;
-        setCompletedProblems(newCompletedProblems);
-        
-        addMessage("Great job! Would you like to practice more with another problem, or move to the next concept?", 'ai');
-        setWaitingForNext(true);
-      } else {
-        addMessage("Incorrect. Check the output comparison.", 'ai');
-      }
-    }, 500);
+      setTimeout(() => {
+        if (response.is_correct) {
+          addMessage("Correct! Well done. 🎉", 'ai');
+          setTimeout(() => {
+            addMessage("Would you like to practice more with another problem?", 'ai');
+            setWaitingForNext(true);
+          }, 1000);
+        } else {
+          addMessage(response.message || "Incorrect. Please try again.", 'ai');
+        }
+      }, 500);
+    } catch (error) {
+      console.error('Failed to submit answer:', error);
+      addMessage('Failed to submit answer. Please try again.', 'ai');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const toggleViewMode = () => {
@@ -279,10 +318,11 @@ const SQLLearningPlatform = ({ currentTheme = 'default', onThemeChange }) => {
         viewMode={viewMode}
         phase={phase}
         waitingForNext={waitingForNext}
-        handleNextTask={handleNextTask}
-        handleNextConcept={handleNextConcept}
+        handleNextProblem={handleNextProblem}
+        handleBackToGallery={handleBackToGallery}
         messagesEndRef={messagesEndRef}
         leftPanelWidth={leftPanelWidth}
+        isLoading={isLoading}
       />
 
       {/* Draggable Divider */}
@@ -296,22 +336,21 @@ const SQLLearningPlatform = ({ currentTheme = 'default', onThemeChange }) => {
         viewMode={viewMode}
         rightPanelTab={rightPanelTab}
         setRightPanelTab={setRightPanelTab}
-        currentTheme={currentTheme}
-        setCurrentTheme={onThemeChange}
-        sections={getSections(currentTheme)}
-        expandedSections={expandedSections}
-        toggleSection={toggleSection}
-        jumpToConcept={jumpToConcept}
-        currentSectionIndex={currentSectionIndex}
-        currentConceptIndex={currentConceptIndex}
-        currentProblemIndex={currentProblemIndex}
-        showProblemNotification={showProblemNotification}
+        concepts={concepts}
+        expandedDifficulties={expandedDifficulties}
+        toggleDifficulty={toggleDifficulty}
+        startConcept={startConcept}
+        startPractice={startPractice}
+        selectedConcept={selectedConcept}
+        currentProblem={currentProblem}
         phase={phase}
         toggleViewMode={toggleViewMode}
+        handleBackToGallery={handleBackToGallery}
         currentInput={currentInput}
         chatMode={chatMode}
         lastResult={lastResult}
         leftPanelWidth={leftPanelWidth}
+        isLoading={isLoading}
       />
     </div>
   );
