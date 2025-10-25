@@ -9,39 +9,37 @@ const RightPanel = ({
   viewMode,
   rightPanelTab,
   setRightPanelTab,
-  currentTheme,
-  setCurrentTheme,
-  sections,
-  expandedSections,
-  toggleSection,
-  jumpToConcept,
-  currentSectionIndex,
-  currentConceptIndex,
-  currentProblemIndex,
-  showProblemNotification,
+  concepts,
+  expandedDifficulties,
+  toggleDifficulty,
+  startConcept,
+  startPractice,
+  selectedConcept,
+  currentProblem,
   phase,
   toggleViewMode,
+  handleBackToGallery,
   currentInput,
   chatMode,
   lastResult,
-  leftPanelWidth
+  leftPanelWidth,
+  isLoading
 }) => {
+  // 日志：接收到的currentProblem数据
+  React.useEffect(() => {
+    if (currentProblem) {
+      console.log('[RightPanel] 当前问题:', currentProblem);
+      console.log('[RightPanel] SQL Schema:', currentProblem.sql_schema);
+      console.log('[RightPanel] SQL Schema类型:', typeof currentProblem.sql_schema);
+    }
+  }, [currentProblem]);
+
   return (
     <div className="bg-gray-100 flex flex-col overflow-hidden" style={{ width: `${100 - leftPanelWidth}%` }}>
-      {/* Tab Navigation with Theme Selector */}
+      {/* Tab Navigation */}
       {viewMode === 'single' && (
         <div className="bg-white border-b border-gray-300">
           <div className="flex">
-            <button
-              onClick={() => setRightPanelTab('practice')}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                rightPanelTab === 'practice'
-                  ? 'border-black text-black bg-white'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 bg-gray-50'
-              }`}
-            >
-              Practice
-            </button>
             <button
               onClick={() => setRightPanelTab('learn')}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -52,17 +50,21 @@ const RightPanel = ({
             >
               Learn
             </button>
-            <div className="ml-auto flex items-center gap-2 px-4">
-              <span className="text-xs text-gray-600">Theme:</span>
-              <select
-                value={currentTheme}
-                onChange={(e) => setCurrentTheme(e.target.value)}
-                className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-gray-400"
-              >
-                <option value="default">Default</option>
-                <option value="harryPotter">Harry Potter</option>
-              </select>
-            </div>
+            <button
+              onClick={() => {
+                setRightPanelTab('practice');
+                if (!currentProblem && phase !== 'practicing') {
+                  startPractice();
+                }
+              }}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                rightPanelTab === 'practice'
+                  ? 'border-black text-black bg-white'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 bg-gray-50'
+              }`}
+            >
+              Practice
+            </button>
           </div>
         </div>
       )}
@@ -70,29 +72,26 @@ const RightPanel = ({
       <div className="flex-1 overflow-y-auto p-4 space-y-4 tiny-scrollbar">
         {viewMode === 'gallery' ? (
           <GalleryView
-            sections={sections}
-            expandedSections={expandedSections}
-            toggleSection={toggleSection}
-            jumpToConcept={jumpToConcept}
+            concepts={concepts}
+            expandedDifficulties={expandedDifficulties}
+            toggleDifficulty={toggleDifficulty}
+            startConcept={startConcept}
+            isLoading={isLoading}
           />
-        ) : rightPanelTab === 'practice' ? (
+        ) : rightPanelTab === 'learn' ? (
+          <LearnTab
+            selectedConcept={selectedConcept}
+          />
+        ) : (
           <PracticeTab
-            sections={sections}
-            currentSectionIndex={currentSectionIndex}
-            currentConceptIndex={currentConceptIndex}
-            currentProblemIndex={currentProblemIndex}
-            showProblemNotification={showProblemNotification}
+            currentProblem={currentProblem}
+            selectedConcept={selectedConcept}
             phase={phase}
-            toggleViewMode={toggleViewMode}
+            handleBackToGallery={handleBackToGallery}
             currentInput={currentInput}
             chatMode={chatMode}
             lastResult={lastResult}
-          />
-        ) : (
-          <LearnTab
-            sections={sections}
-            currentSectionIndex={currentSectionIndex}
-            currentConceptIndex={currentConceptIndex}
+            isLoading={isLoading}
           />
         )}
       </div>

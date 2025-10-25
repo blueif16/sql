@@ -1,27 +1,35 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { User, LogOut, LogIn, ChevronDown, Palette, Check, BookOpen } from 'lucide-react';
-import { APP_CONFIG, ROUTES, THEME_CONFIG } from '../config/constants';
-import { themes } from '../data/themes';
-import mysqlConcepts from '../data/mysql-concepts.json';
+import { User, LogOut, LogIn, ChevronDown, BookOpen, Loader2, Save, Award, TrendingUp, Zap, Languages, Check } from 'lucide-react';
+import { APP_CONFIG, ROUTES } from '../config/constants';
+import { problemAPI, preferenceAPI, conceptAPI, userAPI } from '../services/api';
+import { useLanguage } from '../hooks/useLanguage';
 
-const NavBar = ({ user, onNavigate, onLogout, onThemeChange }) => { // NavBar component: user info, navigation, logout, theme change callbacks
+const NavBar = ({ user, onNavigate, onLogout }) => { // NavBar component: user info, navigation, logout callbacks
+  const { language, toggleLanguage, t } = useLanguage(); // Language management hook
+  const texts = t('navbar'); // Get navbar translations
   const [isDropdownOpen, setIsDropdownOpen] = useState(false); // Dropdown menu toggle state
-  const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false); // Theme submenu toggle state
   const [isTopicOverlayOpen, setIsTopicOverlayOpen] = useState(false); // Topic overlay toggle state
-  const [currentTheme, setCurrentTheme] = useState(THEME_CONFIG.DEFAULT_THEME); // Current theme state
+  const [isGenerating, setIsGenerating] = useState(false); // Problem generation loading state
+  const [isSaving, setIsSaving] = useState(false); // Saving preferences loading state
+  const [isLoadingConcepts, setIsLoadingConcepts] = useState(false); // Loading concepts state
+  const [selectedTopics, setSelectedTopics] = useState([]); // Selected interest topics state
+  const [conceptsByDifficulty, setConceptsByDifficulty] = useState({ beginner: [], intermediate: [], advanced: [] }); // Concepts grouped by difficulty
   const dropdownRef = useRef(null); // Dropdown menu DOM reference
 
-  useEffect(() => { // Load saved theme from localStorage
-    const savedTheme = localStorage.getItem(THEME_CONFIG.STORAGE_KEY) || THEME_CONFIG.DEFAULT_THEME;
-    setCurrentTheme(savedTheme);
-  }, []);
+
+  useEffect(() => { // Load user preferences when user logs in
+    if (user) {
+      loadUserPreferences();
+    } else {
+      setSelectedTopics([]);
+    }
+  }, [user]);
 
   useEffect(() => { // Close dropdown and overlay when clicking outside
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsDropdownOpen(false);
-        setIsThemeMenuOpen(false);
       }
       // Close topic overlay when clicking outside
       if (!event.target.closest('.topic-overlay') && !event.target.closest('.choose-topic-btn')) {
@@ -34,34 +42,142 @@ const NavBar = ({ user, onNavigate, onLogout, onThemeChange }) => { // NavBar co
 
   const handleProfileClick = () => { // Handle profile navigation
     setIsDropdownOpen(false);
-    setIsThemeMenuOpen(false);
     onNavigate && onNavigate(ROUTES.PROFILE);
   };
 
   const handleLoginClick = () => { // Handle login navigation
     setIsDropdownOpen(false);
-    setIsThemeMenuOpen(false);
     onNavigate && onNavigate(ROUTES.LOGIN);
   };
 
   const handleLogoutClick = () => { // Handle logout action
     setIsDropdownOpen(false);
-    setIsThemeMenuOpen(false);
     onLogout && onLogout();
   };
 
-  const handleThemeSelect = (themeId) => { // Handle theme selection
-    setCurrentTheme(themeId);
-    localStorage.setItem(THEME_CONFIG.STORAGE_KEY, themeId);
-    setIsThemeMenuOpen(false);
-    setIsDropdownOpen(false);
-    onThemeChange && onThemeChange(themeId);
+
+  const loadUserPreferences = async () => { // Load user's saved interest preferences
+    try {
+      const response = await preferenceAPI.getPreferences();
+      if (response.interest_areas && Array.isArray(response.interest_areas)) {
+        setSelectedTopics(response.interest_areas);
+      }
+    } catch (error) {
+      console.error('Failed to load preferences:', error);
+    }
   };
 
-  const handleTopicSelect = (concept) => { // Handle topic selection
-    setIsTopicOverlayOpen(false);
-    // You can add logic here to navigate to specific topic or handle selection
-    console.log('Selected topic:', concept);
+  const loadConceptsWithProgress = async () => { // Load all concepts with user progress
+    setIsLoadingConcepts(true);
+    try {
+      const response = await conceptAPI.getConceptsWithProgress();
+      setConceptsByDifficulty(response);
+    } catch (error) {
+      console.error('Failed to load concepts:', error);
+      alert(texts.loadFailed + (error.response?.data?.error || error.message || texts.unknownError));
+    } finally {
+      setIsLoadingConcepts(false);
+    }
+  };
+
+  const handleTopicToggle = (conceptName) => { // Toggle topic selection (multi-select)
+    setSelectedTopics(prev => {
+      if (prev.includes(conceptName)) {
+        return prev.filter(t => t !== conceptName);
+      } else {
+        return [...prev, conceptName];
+      }
+    });
+  };
+
+  const handleOpenTopicOverlay = () => { // Open overlay and load concepts
+    setIsTopicOverlayOpen(true);
+    setIsDropdownOpen(false);
+    loadConceptsWithProgress();
+  };
+
+  const handleSaveInterests = async () => { // Save selected interests to database
+    if (!user) {
+      alert(texts.loginFirst);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await preferenceAPI.updatePreferences({ interest_areas: selectedTopics });
+      alert(texts.saveSuccess);
+    } catch (error) {
+      console.error('Failed to save preferences:', error);
+      alert(texts.saveFailed + (error.response?.data?.error || error.message || texts.unknownError));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleGenerateProblem = async () => { // Generate problem based on selected interests
+    if (!user) {
+      alert(texts.loginFirst);
+      return;
+    }
+
+    if (selectedTopics.length === 0) {
+      alert(texts.selectAtLeastOne);
+      return;
+    }
+    
+    setIsGenerating(true);
+    
+    try {
+      const randomTopic = selectedTopics[Math.floor(Math.random() * selectedTopics.length)];
+      
+      // Find the concept details from loaded data
+      let topicInfo = '';
+      for (const difficulty of ['beginner', 'intermediate', 'advanced']) {
+        const concept = conceptsByDifficulty[difficulty].find(c => c.name === randomTopic);
+        if (concept) {
+          topicInfo = concept.description;
+          break;
+        }
+      }
+      
+      const response = await problemAPI.generateProblem({
+        topic: randomTopic,
+        topic_info: topicInfo
+      });
+      
+      if (response.success) {
+        alert(texts.generateSuccess);
+        setIsTopicOverlayOpen(false);
+        if (onNavigate && response.problem?.id) {
+          onNavigate(`/problem/${response.problem.id}`);
+        }
+      } else {
+        alert(texts.generateFailed);
+      }
+    } catch (error) {
+      console.error('Error generating problem:', error);
+      alert(texts.generateFailed + ': ' + (error.response?.data?.error || error.message || texts.unknownError));
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const getDifficultyIcon = (difficulty) => { // Get icon for difficulty level
+    switch (difficulty) {
+      case 'beginner': return <Zap className="w-5 h-5" />;
+      case 'intermediate': return <TrendingUp className="w-5 h-5" />;
+      case 'advanced': return <Award className="w-5 h-5" />;
+      default: return <BookOpen className="w-5 h-5" />;
+    }
+  };
+
+  const getDifficultyColor = (difficulty) => { // Get color scheme for difficulty level
+    switch (difficulty) {
+      case 'beginner': return { bg: 'bg-green-500/80', border: 'border-green-300/60', selectedBg: 'bg-green-500/40', text: 'text-green-100' };
+      case 'intermediate': return { bg: 'bg-yellow-500/80', border: 'border-yellow-300/60', selectedBg: 'bg-yellow-500/40', text: 'text-yellow-100' };
+      case 'advanced': return { bg: 'bg-red-500/80', border: 'border-red-300/60', selectedBg: 'bg-red-500/40', text: 'text-red-100' };
+      default: return { bg: 'bg-gray-500/80', border: 'border-gray-300/60', selectedBg: 'bg-gray-500/40', text: 'text-gray-100' };
+    }
   };
 
   const getUserInitials = () => { // Get user initials for avatar
@@ -94,7 +210,7 @@ const NavBar = ({ user, onNavigate, onLogout, onThemeChange }) => { // NavBar co
           {/* SQL Tutor Title */}
           <div className="flex items-center">
             <h1 className="text-xl font-bold bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 bg-clip-text text-transparent">
-              SQL Tutor
+              {texts.appName}
             </h1>
           </div>
 
@@ -129,7 +245,7 @@ const NavBar = ({ user, onNavigate, onLogout, onThemeChange }) => { // NavBar co
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-900 truncate">{user.username}</p>
-                          <p className="text-xs text-gray-500 truncate">{user.email || '查看个人资料'}</p>
+                          <p className="text-xs text-gray-500 truncate">{user.email || texts.viewProfile}</p>
                         </div>
                       </div>
                     </div>
@@ -142,61 +258,44 @@ const NavBar = ({ user, onNavigate, onLogout, onThemeChange }) => { // NavBar co
                       <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
                         <User className="w-4 h-4 text-blue-600" />
                       </div>
-                      <span className="font-medium">个人资料</span>
+                      <span className="font-medium">{texts.profile}</span>
                     </button>
 
                     {/* Choose Topic Button */}
                     <button
-                      onClick={() => {
-                        setIsTopicOverlayOpen(true);
-                        setIsDropdownOpen(false);
-                      }}
-                      className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100/80 flex items-center space-x-3 transition-all duration-150 group"
+                      onClick={handleOpenTopicOverlay}
+                      className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100/80 flex items-center space-x-3 transition-all duration-150 group choose-topic-btn"
                     >
                       <div className="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center group-hover:bg-purple-100 transition-colors">
                         <BookOpen className="w-4 h-4 text-purple-600" />
                       </div>
-                      <span className="font-medium">Choose Topic</span>
+                      <span className="font-medium">{texts.chooseTopic}</span>
                     </button>
 
-                    {/* Theme Selection */}
-                    <div className="relative">
-                      <button
-                        onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
-                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100/80 flex items-center justify-between transition-all duration-150 group"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <div className="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center group-hover:bg-purple-100 transition-colors">
-                            <Palette className="w-4 h-4 text-purple-600" />
-                          </div>
-                          <span className="font-medium">主题切换</span>
-                        </div>
-                        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isThemeMenuOpen ? 'rotate-180' : ''}`} />
-                      </button>
-
-                      {/* Theme Submenu */}
-                      {isThemeMenuOpen && (
-                        <div className="mx-2 mb-2 mt-1 bg-gray-50/80 rounded-xl p-2 space-y-1 max-h-64 overflow-y-auto">
-                          {Object.entries(themes).map(([themeId, theme]) => (
-                            <button
-                              key={themeId}
-                              onClick={() => handleThemeSelect(themeId)}
-                              className={`w-full px-3 py-2.5 text-left text-sm rounded-lg flex items-center justify-between transition-all duration-150 ${
-                                currentTheme === themeId
-                                  ? 'bg-blue-500 text-white shadow-md'
-                                  : 'text-gray-700 hover:bg-white/80 hover:shadow-sm'
-                              }`}
-                            >
-                              <div className="flex items-center space-x-3">
-                                <span className="text-lg">{theme.icon}</span>
-                                <span className="font-medium">{theme.name}</span>
-                              </div>
-                              {currentTheme === themeId && <Check className="w-4 h-4" />}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    {/* Language Switch Button */}
+                    <button
+                      onClick={async () => {
+                        const newLang = language === 'zh' ? 'en' : 'zh';
+                        toggleLanguage();
+                        if (user) {
+                          try {
+                            await userAPI.updateLanguage(newLang);
+                            // 触发语言变更事件通知其他组件
+                            window.dispatchEvent(new CustomEvent('languageChanged', { detail: { language: newLang } }));
+                            // 刷新页面数据以获取新语言的内容
+                            window.location.reload();
+                          } catch (error) {
+                            console.error('Failed to update language on server:', error);
+                          }
+                        }
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100/80 flex items-center space-x-3 transition-all duration-150 group"
+                    >
+                      <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center group-hover:bg-amber-100 transition-colors">
+                        <Languages className="w-4 h-4 text-amber-600" />
+                      </div>
+                      <span className="font-medium">{language === 'zh' ? 'English' : '中文'}</span>
+                    </button>
 
                     <div className="border-t border-gray-100 my-2"></div>
 
@@ -208,19 +307,35 @@ const NavBar = ({ user, onNavigate, onLogout, onThemeChange }) => { // NavBar co
                       <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center group-hover:bg-red-100 transition-colors">
                         <LogOut className="w-4 h-4 text-red-600" />
                       </div>
-                      <span className="font-medium">退出登录</span>
+                      <span className="font-medium">{texts.logout}</span>
                     </button>
                   </>
                 ) : (
-                  <button
-                    onClick={handleLoginClick}
-                    className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100/80 flex items-center space-x-3 transition-all duration-150 group"
-                  >
-                    <div className="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center group-hover:bg-green-100 transition-colors">
-                      <LogIn className="w-4 h-4 text-green-600" />
-                    </div>
-                    <span className="font-medium">登录</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={handleLoginClick}
+                      className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100/80 flex items-center space-x-3 transition-all duration-150 group"
+                    >
+                      <div className="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center group-hover:bg-green-100 transition-colors">
+                        <LogIn className="w-4 h-4 text-green-600" />
+                      </div>
+                      <span className="font-medium">{texts.login}</span>
+                    </button>
+
+                    {/* Language Switch Button for non-logged-in users */}
+                    <button
+                      onClick={async () => {
+                        const newLang = language === 'zh' ? 'en' : 'zh';
+                        toggleLanguage();
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100/80 flex items-center space-x-3 transition-all duration-150 group"
+                    >
+                      <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center group-hover:bg-amber-100 transition-colors">
+                        <Languages className="w-4 h-4 text-amber-600" />
+                      </div>
+                      <span className="font-medium">{language === 'zh' ? 'English' : '中文'}</span>
+                    </button>
+                  </>
                 )}
               </div>
             )}
@@ -232,39 +347,205 @@ const NavBar = ({ user, onNavigate, onLogout, onThemeChange }) => { // NavBar co
       {isTopicOverlayOpen && createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] animate-in fade-in duration-200">
           <div className="topic-overlay flex items-center justify-center min-h-screen p-4">
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-8 max-w-2xl w-full">
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-8 max-w-7xl w-full max-h-[90vh] overflow-y-auto">
               <div className="text-center mb-8">
-                <h2 className="text-3xl font-bold text-white mb-2">Choose a Topic</h2>
-                <p className="text-white/80">Select a MySQL concept to explore and practice</p>
+                <h2 className="text-3xl font-bold text-white mb-2">{texts.chooseTopicTitle}</h2>
+                <p className="text-white/80">
+                  {isGenerating ? texts.generating : 
+                   isSaving ? texts.saving : 
+                   isLoadingConcepts ? texts.loading :
+                   texts.selectTopics(selectedTopics.length)}
+                </p>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {mysqlConcepts.concepts.map((concept, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleTopicSelect(concept)}
-                    className="group p-4 bg-white/20 hover:bg-white/30 backdrop-blur-sm border border-white/20 hover:border-white/40 rounded-xl transition-all duration-200 hover:scale-105 hover:shadow-lg"
-                  >
-                    <div className="text-center">
-                      <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-white/30 transition-colors">
-                        <BookOpen className="w-6 h-6 text-white" />
+              {isGenerating || isSaving || isLoadingConcepts ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="w-16 h-16 text-white animate-spin mb-4" />
+                  <p className="text-white/90 text-lg">
+                    {isGenerating ? texts.generatingMsg : isSaving ? texts.savingMsg : texts.loadingMsg}
+                  </p>
+                  <p className="text-white/70 text-sm mt-2">{texts.waitMsg}</p>
+                </div>
+              ) : (
+                <>
+                  {/* Three columns for different difficulty levels */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                    {/* Beginner Column */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 bg-green-500/80 rounded-lg flex items-center justify-center">
+                          <Zap className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-green-100">{texts.beginner}</h3>
+                          <p className="text-green-200/80 text-sm">{texts.beginnerDesc}</p>
+                        </div>
                       </div>
-                      <h3 className="font-semibold text-white text-sm leading-tight">
-                        {concept.concept}
-                      </h3>
+                      <div className="space-y-3">
+                        {conceptsByDifficulty.beginner.map((concept) => {
+                          const isSelected = selectedTopics.includes(concept.name);
+                          const colors = getDifficultyColor('beginner');
+                          return (
+                            <button
+                              key={concept.id}
+                              onClick={() => handleTopicToggle(concept.name)}
+                              className={`w-full p-4 backdrop-blur-sm border rounded-xl transition-all duration-200 hover:scale-102 text-left ${
+                                isSelected 
+                                  ? `${colors.selectedBg} ${colors.border} shadow-md` 
+                                  : 'bg-white/10 hover:bg-white/20 border-white/20 hover:border-white/30'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <h4 className="font-semibold text-white text-base">{concept.localized_name || concept.name}</h4>
+                                {isSelected && <Check className="w-5 h-5 text-white flex-shrink-0" />}
+                              </div>
+                              <p className="text-white/70 text-xs line-clamp-2 mb-2">{concept.localized_description || concept.description}</p>
+                              {user && concept.total > 0 && (
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 bg-white/20 rounded-full h-2">
+                                    <div 
+                                      className={`${colors.bg} h-2 rounded-full transition-all duration-300`}
+                                      style={{ width: `${concept.progress_percentage}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-white/80 text-xs font-medium whitespace-nowrap">
+                                    {concept.solved}/{concept.total}
+                                  </span>
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </button>
-                ))}
-              </div>
 
-              <div className="mt-8 text-center">
-                <button
-                  onClick={() => setIsTopicOverlayOpen(false)}
-                  className="px-6 py-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm border border-white/30 text-white rounded-xl transition-all duration-200 font-medium hover:scale-105"
-                >
-                  Close
-                </button>
-              </div>
+                    {/* Intermediate Column */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 bg-yellow-500/80 rounded-lg flex items-center justify-center">
+                          <TrendingUp className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-yellow-100">{texts.intermediate}</h3>
+                          <p className="text-yellow-200/80 text-sm">{texts.intermediateDesc}</p>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        {conceptsByDifficulty.intermediate.map((concept) => {
+                          const isSelected = selectedTopics.includes(concept.name);
+                          const colors = getDifficultyColor('intermediate');
+                          return (
+                            <button
+                              key={concept.id}
+                              onClick={() => handleTopicToggle(concept.name)}
+                              className={`w-full p-4 backdrop-blur-sm border rounded-xl transition-all duration-200 hover:scale-102 text-left ${
+                                isSelected 
+                                  ? `${colors.selectedBg} ${colors.border} shadow-md` 
+                                  : 'bg-white/10 hover:bg-white/20 border-white/20 hover:border-white/30'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <h4 className="font-semibold text-white text-base">{concept.localized_name || concept.name}</h4>
+                                {isSelected && <Check className="w-5 h-5 text-white flex-shrink-0" />}
+                              </div>
+                              <p className="text-white/70 text-xs line-clamp-2 mb-2">{concept.localized_description || concept.description}</p>
+                              {user && concept.total > 0 && (
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 bg-white/20 rounded-full h-2">
+                                    <div 
+                                      className={`${colors.bg} h-2 rounded-full transition-all duration-300`}
+                                      style={{ width: `${concept.progress_percentage}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-white/80 text-xs font-medium whitespace-nowrap">
+                                    {concept.solved}/{concept.total}
+                                  </span>
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Advanced Column */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 bg-red-500/80 rounded-lg flex items-center justify-center">
+                          <Award className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-red-100">{texts.advanced}</h3>
+                          <p className="text-red-200/80 text-sm">{texts.advancedDesc}</p>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        {conceptsByDifficulty.advanced.map((concept) => {
+                          const isSelected = selectedTopics.includes(concept.name);
+                          const colors = getDifficultyColor('advanced');
+                          return (
+                            <button
+                              key={concept.id}
+                              onClick={() => handleTopicToggle(concept.name)}
+                              className={`w-full p-4 backdrop-blur-sm border rounded-xl transition-all duration-200 hover:scale-102 text-left ${
+                                isSelected 
+                                  ? `${colors.selectedBg} ${colors.border} shadow-md` 
+                                  : 'bg-white/10 hover:bg-white/20 border-white/20 hover:border-white/30'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <h4 className="font-semibold text-white text-base">{concept.localized_name || concept.name}</h4>
+                                {isSelected && <Check className="w-5 h-5 text-white flex-shrink-0" />}
+                              </div>
+                              <p className="text-white/70 text-xs line-clamp-2 mb-2">{concept.localized_description || concept.description}</p>
+                              {user && concept.total > 0 && (
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 bg-white/20 rounded-full h-2">
+                                    <div 
+                                      className={`${colors.bg} h-2 rounded-full transition-all duration-300`}
+                                      style={{ width: `${concept.progress_percentage}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-white/80 text-xs font-medium whitespace-nowrap">
+                                    {concept.solved}/{concept.total}
+                                  </span>
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex justify-center gap-4 pt-6 border-t border-white/20">
+                    <button
+                      onClick={handleSaveInterests}
+                      disabled={!user}
+                      className="flex items-center gap-2 px-6 py-3 bg-green-500/80 hover:bg-green-500/90 backdrop-blur-sm border border-green-300/50 text-white rounded-xl transition-all duration-200 font-medium hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-lg"
+                    >
+                      <Save className="w-5 h-5" />
+                      {texts.savePreferences}
+                    </button>
+                    <button
+                      onClick={handleGenerateProblem}
+                      disabled={!user || selectedTopics.length === 0}
+                      className="flex items-center gap-2 px-6 py-3 bg-purple-500/80 hover:bg-purple-500/90 backdrop-blur-sm border border-purple-300/50 text-white rounded-xl transition-all duration-200 font-medium hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-lg"
+                    >
+                      <BookOpen className="w-5 h-5" />
+                      {texts.generateProblem}
+                    </button>
+                    <button
+                      onClick={() => setIsTopicOverlayOpen(false)}
+                      disabled={isGenerating || isSaving}
+                      className="px-6 py-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm border border-white/30 text-white rounded-xl transition-all duration-200 font-medium hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                    >
+                      {texts.close}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>,

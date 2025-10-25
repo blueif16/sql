@@ -55,7 +55,8 @@ CREATE TABLE interests (
 -- Create concept lookup table
 CREATE TABLE concept (
     id SERIAL PRIMARY KEY,
-    concept VARCHAR(100) UNIQUE NOT NULL
+    concept VARCHAR(100) UNIQUE NOT NULL,
+    info TEXT NOT NULL
 );
 
 -- Create preferences table

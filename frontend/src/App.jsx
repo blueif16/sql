@@ -1,70 +1,100 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import NavBar from './components/NavBar';
-import SQLLearningPlatform from './components/SQLLearningPlatform';
-import ProfilePage from './components/ProfilePage';
-import { USER_CONFIG, ROUTES, THEME_CONFIG } from './config/constants';
+import { HomePage, ProblemDetailPage, ProfilePage } from './pages';
+import { USER_CONFIG, ROUTES } from './config/constants';
+import { userAPI } from './services/api';
 import './App.css';
 
-function App() {
-  const [currentRoute, setCurrentRoute] = useState(ROUTES.HOME); // Current route state
+function AppContent() { // Main app content with routing
+  const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState(null); // Current logged-in user information
-  const [currentTheme, setCurrentTheme] = useState(THEME_CONFIG.DEFAULT_THEME); // Current theme state
+  const [isLoggingIn, setIsLoggingIn] = useState(true); // Auto-login loading state
 
-  useEffect(() => { // Load user info from localStorage on mount
-    const savedUser = localStorage.getItem(USER_CONFIG.SESSION_KEY);
-    if (savedUser) {
+  useEffect(() => { // Auto-login on mount
+    const autoLogin = async () => {
       try {
-        setUser(JSON.parse(savedUser));
-      } catch (e) {
-        console.error('Failed to parse user info:', e);
+        const response = await userAPI.autoLogin();
+        const userData = response.user;
+        setUser(userData);
+        localStorage.setItem(USER_CONFIG.SESSION_KEY, JSON.stringify(userData));
+        // 同步用户语言设置到localStorage
+        if (userData.language) {
+          localStorage.setItem('sql_platform_language', userData.language);
+          // 触发自定义事件通知语言变更
+          window.dispatchEvent(new CustomEvent('languageChanged', { detail: { language: userData.language } }));
+        }
+        console.log('自动登录成功:', userData);
+      } catch (error) {
+        console.error('自动登录失败:', error);
+        setUser(null);
+      } finally {
+        setIsLoggingIn(false);
       }
+    };
+
+    autoLogin();
+  }, []);
+
+  const handleNavigate = (route, params = {}) => { // Handle route navigation with optional parameters
+    if (route === ROUTES.PROBLEM && params.problemId) {
+      navigate(`${route}?id=${params.problemId}`);
     } else {
-      setUser({ // Mock user data for demo, should fetch from backend in production
-        id: 1,
-        username: 'demo_user',
-        email: 'demo@example.com',
-        created_at: '2025-10-01',
-        language: 'en',
-      });
+      navigate(route);
     }
-  }, []);
-
-  useEffect(() => { // Load saved theme from localStorage on mount
-    const savedTheme = localStorage.getItem(THEME_CONFIG.STORAGE_KEY) || THEME_CONFIG.DEFAULT_THEME;
-    setCurrentTheme(savedTheme);
-  }, []);
-
-  const handleNavigate = (route) => { // Handle route navigation
-    setCurrentRoute(route);
   };
 
   const handleLogout = () => { // Handle user logout
     localStorage.removeItem(USER_CONFIG.SESSION_KEY);
     setUser(null);
-    setCurrentRoute(ROUTES.HOME);
+    navigate(ROUTES.HOME);
   };
 
-  const handleThemeChange = (themeId) => { // Handle theme change
-    setCurrentTheme(themeId);
-  };
-
-  const renderContent = () => { // Render content based on current route
-    switch (currentRoute) {
-      case ROUTES.PROFILE:
-        return <ProfilePage user={user} />;
-      case ROUTES.HOME:
-      default:
-        return <SQLLearningPlatform currentTheme={currentTheme} onThemeChange={handleThemeChange} />;
-    }
-  };
+  if (isLoggingIn) { // Show loading while auto-login
+    return (
+      <div className="App h-screen flex items-center justify-center">
+        <div className="text-gray-600">加载中...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="App h-screen flex flex-col">
-      <NavBar user={user} onNavigate={handleNavigate} onLogout={handleLogout} onThemeChange={handleThemeChange} />
+      <NavBar 
+        user={user} 
+        onNavigate={handleNavigate} 
+        onLogout={handleLogout} 
+      />
       <div className="flex-1 overflow-hidden">
-        {renderContent()}
+        <Routes>
+          <Route 
+            path={ROUTES.HOME} 
+            element={<HomePage />} 
+          />
+          <Route 
+            path={ROUTES.PROBLEM} 
+            element={<ProblemDetailPage />} 
+          />
+          <Route 
+            path={ROUTES.PROFILE} 
+            element={<ProfilePage user={user} />} 
+          />
+          <Route 
+            path="*" 
+            element={<HomePage />} 
+          />
+        </Routes>
       </div>
     </div>
+  );
+}
+
+function App() { // Root app component with router
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
   );
 }
 

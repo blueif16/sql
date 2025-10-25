@@ -1,8 +1,12 @@
+<<<<<<< HEAD
 runtime: python312  # 使用 Python 3.9 运行环境
+=======
+runtime: python39  # Python 3.9运行环境
+>>>>>>> f70a993 (v1 full generation of problem + chat + load topics + django db setup)
 
 entrypoint: gunicorn -b :$PORT myproject.wsgi:application  # 应用入口点
 
-handlers:  # URL 处理规则
+handlers:  # URL处理规则
 - url: /static
   static_dir: static/
 - url: /.*
@@ -10,9 +14,13 @@ handlers:  # URL 处理规则
 
 env_variables:  # 环境变量
   DJANGO_SETTINGS_MODULE: 'myproject.settings'
+<<<<<<< HEAD
   DB_NAME: 'postgres'
   DB_USER: 'postgres'
   DB_PASSWORD: 'your_password_here'
   DB_HOST: '34.94.226.247'
   DB_PORT: '5432'
+=======
+  DEBUG: 'False'
+>>>>>>> f70a993 (v1 full generation of problem + chat + load topics + django db setup)
 

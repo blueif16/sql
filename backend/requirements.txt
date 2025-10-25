@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 gunicorn==23.0.0
 Django==5.1.4
 djangorestframework==3.15.2
@@ -17,3 +18,16 @@ flake8==7.1.1
 isort==5.13.2
 cloud-sql-python-connector==1.10.1
 python-dotenv==1.0.0
+=======
+Django
+djangorestframework
+django-cors-headers
+python-decouple
+psycopg2-binary
+gunicorn==21.2.0
+google-generativeai==0.8.3
+instructor==1.11.3
+pydantic==2.10.4
+
+jsonref
+>>>>>>> f70a993 (v1 full generation of problem + chat + load topics + django db setup)

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Send, BookOpen, CheckCircle, RotateCcw } from 'lucide-react';
+import ReactMarkdown from 'react-markdown'; // 用于渲染markdown格式的聊天机器人回复
 
 const ChatInterface = ({
   messages,
@@ -11,10 +12,11 @@ const ChatInterface = ({
   viewMode,
   phase,
   waitingForNext,
-  handleNextTask,
-  handleNextConcept,
+  handleNextProblem,
+  handleBackToGallery,
   messagesEndRef,
-  leftPanelWidth
+  leftPanelWidth,
+  isLoading
 }) => {
   return (
     <div className="flex flex-col relative" style={{ width: `${leftPanelWidth}%` }}>
@@ -26,9 +28,15 @@ const ChatInterface = ({
                 ? 'bg-gray-200 text-gray-600 max-w-xs' 
                 : 'text-gray-900 w-full'
             }`}>
-              <div className="font-mono whitespace-pre-line">
-                {message.content}
-              </div>
+              {message.type === 'user' ? (
+                <div className="font-mono whitespace-pre-line">
+                  {message.content}
+                </div>
+              ) : (
+                <div className="prose prose-sm max-w-none">
+                  <ReactMarkdown>{message.content}</ReactMarkdown>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -36,29 +44,24 @@ const ChatInterface = ({
         {waitingForNext && (
           <div className="flex justify-center gap-2">
             <button
-              onClick={handleNextTask}
-              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm"
+              onClick={handleNextProblem}
+              disabled={isLoading}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
             >
-              Practice More
+              {isLoading ? 'Loading...' : 'Practice More'}
             </button>
             <button
-              onClick={handleNextConcept}
+              onClick={handleBackToGallery}
               className="bg-black hover:bg-gray-800 text-white px-4 py-2 rounded text-sm"
             >
-              Next Concept
+              Back to Gallery
             </button>
           </div>
         )}
 
-        {phase === 'completed' && (
+        {isLoading && (
           <div className="flex justify-center">
-            <button
-              onClick={() => window.location.reload()}
-              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
-            >
-              <RotateCcw size={14} />
-              Practice Again
-            </button>
+            <div className="text-gray-500 text-sm">Loading...</div>
           </div>
         )}
 
@@ -101,7 +104,7 @@ const ChatInterface = ({
             }}
           />
           
-          {phase === 'problems' && viewMode === 'single' && (
+          {viewMode === 'single' && (phase === 'learning' || phase === 'practicing') && (
             <div 
               className="absolute right-3 flex gap-1"
               style={{
