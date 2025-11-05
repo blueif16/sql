@@ -1,0 +1,13 @@
+DROP TRIGGER IF EXISTS preference_update_timestamp ON preferences;
+DROP FUNCTION IF EXISTS update_preference_timestamp();
+DROP FUNCTION IF EXISTS get_user_difficulty_stats(INT);
+DROP VIEW IF EXISTS user_stats;
+DROP TABLE IF EXISTS user_progress CASCADE;
+DROP TABLE IF EXISTS submissions CASCADE;
+DROP TABLE IF EXISTS problems CASCADE;
+DROP TABLE IF EXISTS interest_areas CASCADE;
+DROP TABLE IF EXISTS concepts CASCADE;
+DROP TABLE IF EXISTS preferences CASCADE;
+DROP TABLE IF EXISTS user_roles CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+

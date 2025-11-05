@@ -54,23 +54,35 @@ echo ""
 echo "🐍 Setting up Backend..."
 cd backend
 
-# Check if virtual environment exists
-if [ ! -d "venv" ]; then
-    echo "📦 Creating Python virtual environment..."
-    python3 -m venv venv
-fi
-
-# Activate virtual environment
-echo "🔧 Activating virtual environment..."
-source venv/bin/activate
-
-# Install dependencies
-if [ ! -f "venv/.installed" ]; then
-    echo "📦 Installing backend dependencies..."
-    pip install -r requirements.txt
-    touch venv/.installed
+# Check if running in Conda environment
+if [ -n "$CONDA_DEFAULT_ENV" ]; then
+    echo "🐍 检测到 Conda 环境: $CONDA_DEFAULT_ENV"
+    echo "📦 检查依赖包..."
+    if ! python -c "import django" 2>/dev/null; then
+        echo "📦 安装后端依赖..."
+        pip install -r requirements.txt
+    else
+        echo "✅ 后端依赖已安装"
+    fi
 else
-    echo "✅ Backend dependencies already installed"
+    # Check if virtual environment exists
+    if [ ! -d "venv" ]; then
+        echo "📦 创建 Python 虚拟环境..."
+        python3 -m venv venv
+    fi
+
+    # Activate virtual environment
+    echo "🔧 激活虚拟环境..."
+    source venv/bin/activate
+
+    # Install dependencies
+    if [ ! -f "venv/.installed" ]; then
+        echo "📦 安装后端依赖..."
+        pip install -r requirements.txt
+        touch venv/.installed
+    else
+        echo "✅ 后端依赖已安装"
+    fi
 fi
 
 # Run migrations

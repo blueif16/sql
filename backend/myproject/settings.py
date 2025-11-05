@@ -1,10 +1,6 @@
 import os  # 操作系统接口模块
 from pathlib import Path  # 路径操作模块
-<<<<<<< HEAD
-from decouple import config  # 环境变量读取
-=======
 from decouple import config  # 环境变量配置模块
->>>>>>> f70a993 (v1 full generation of problem + chat + load topics + django db setup)
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # 项目根目录
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-production-123456789')  # 密钥（生产环境需更改）
@@ -55,16 +51,6 @@ TEMPLATES = [  # 模板配置
 
 WSGI_APPLICATION = 'myproject.wsgi.application'  # WSGI 应用
 
-<<<<<<< HEAD
-DATABASES = {  # 数据库配置
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME', default='postgres'),
-        'USER': config('DB_USER', default='postgres'),
-        'PASSWORD': config('DB_PASSWORD', default=''),
-        'HOST': config('DB_HOST', default='34.94.226.247'),
-        'PORT': config('DB_PORT', default='5432'),
-=======
 USE_CLOUD_SQL = config('USE_CLOUD_SQL', default='False', cast=bool)  # 是否使用Cloud SQL
 if USE_CLOUD_SQL:  # 生产环境：PostgreSQL on Cloud SQL
     DATABASES = {
@@ -76,7 +62,6 @@ if USE_CLOUD_SQL:  # 生产环境：PostgreSQL on Cloud SQL
             'USER': config('DB_USER', default='postgres'),
             'PASSWORD': config('DB_PASSWORD', default=''),
         }
->>>>>>> f70a993 (v1 full generation of problem + chat + load topics + django db setup)
     }
 else:  # 本地开发：SQLite
     DATABASES = {
@@ -105,27 +90,6 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'static')  # 静态文件收集目录
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'  # 默认主键字段类型
 
-<<<<<<< HEAD
-# REST Framework 配置
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
-    ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
-    ],
-}
-
-# CORS 配置
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:5173',
-]
-
-CORS_ALLOW_CREDENTIALS = True
-=======
 # CORS settings
 CORS_ALLOWED_ORIGINS = [  # 允许的跨域来源
     'http://localhost:5173',
@@ -180,5 +144,4 @@ LOGGING = {
         },
     },
 }
->>>>>>> f70a993 (v1 full generation of problem + chat + load topics + django db setup)
 

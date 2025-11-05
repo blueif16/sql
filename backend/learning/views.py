@@ -526,10 +526,6 @@ class UserProgressViewSet(viewsets.ReadOnlyModelViewSet):
         progress, created = UserProgress.objects.get_or_create(user=request.user)
         
         total_problems = Problem.objects.filter(is_active=True).count()
-<<<<<<< HEAD
-        completed_problems = progress.filter(completed=True).count()
-        total_attempts = progress.aggregate(total=Sum('attempts'))['total'] or 0
-=======
         solved_count = len(progress.solved_problem_ids)
         
         # Calculate per-difficulty stats
@@ -542,7 +538,6 @@ class UserProgressViewSet(viewsets.ReadOnlyModelViewSet):
             }
         else:
             difficulty_stats = {'easy': 0, 'medium': 0, 'hard': 0}
->>>>>>> f70a993 (v1 full generation of problem + chat + load topics + django db setup)
         
         return Response({
             'total_problems': total_problems,
