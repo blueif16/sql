@@ -1,6 +1,7 @@
 """AI-powered problem generator using Instructor and Pydantic"""
 
 import instructor
+import openai
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from decouple import config
@@ -52,9 +53,12 @@ class ProblemGenerator:
     """Generate SQL problems using LLM with structured output via Instructor"""
     
     def __init__(self):
-        """Initialize the Instructor client with Gemini"""
-        self.api_key = config('GOOGLE_API_KEY')
-        self.client = instructor.from_provider("google/gemini-2.5-flash-lite", api_key=self.api_key)
+        """Initialize the Instructor client with OpenAI"""
+        self.api_key = config('OPENAI_API_KEY')
+        self.client = instructor.from_openai(
+            openai.OpenAI(api_key=self.api_key)
+        )
+        self.model_name = "gpt-5"
     
     def generate_problem(
         self, 
@@ -108,6 +112,7 @@ Requirements:
         logger.info(f"[ProblemGenerator] 开始生成问题 - Topic: {topic}")
         
         problem = self.client.chat.completions.create(
+            model=self.model_name,
             response_model=ProblemSchema,
             messages=[{"role": "user", "content": prompt}],
         )

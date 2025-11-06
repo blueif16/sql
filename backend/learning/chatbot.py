@@ -1,18 +1,18 @@
 """
-Chatbot service using Google Gemini API.
+Chatbot service using OpenAI API.
 """
 
 import uuid
 from typing import List, Dict, Optional, Generator
 from decouple import config  # 使用decouple读取.env文件
-import google.generativeai as genai
+from openai import OpenAI
 from .models import ChatThread, ChatMessage, Problem, Concept
 
 
 class ChatbotConfig:
     """聊天机器人配置常量"""
-    GOOGLE_API_KEY = config('GOOGLE_API_KEY', default='')  # Google API密钥（从.env文件读取）
-    MODEL_NAME = config('GEMINI_MODEL', default='gemini-2.5-flash-lite')  # 模型名称
+    OPENAI_API_KEY = config('OPENAI_API_KEY', default='')  # OpenAI API密钥（从.env文件读取）
+    MODEL_NAME = config('OPENAI_MODEL', default='gpt-4o')  # 模型名称
     TEMPERATURE = float(config('CHAT_TEMPERATURE', default='0.7'))  # 生成温度
     DEFAULT_LANGUAGE = 'en'  # 默认语言
     
@@ -33,11 +33,10 @@ class SQLChatbot:
     """SQL学习聊天机器人"""
     
     def __init__(self):
-        if not ChatbotConfig.GOOGLE_API_KEY:
-            raise ValueError("GOOGLE_API_KEY environment variable not set")  # API密钥未设置
+        if not ChatbotConfig.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY environment variable not set")  # API密钥未设置
         
-        genai.configure(api_key=ChatbotConfig.GOOGLE_API_KEY)  # 配置API
-        self.model = genai.GenerativeModel(ChatbotConfig.MODEL_NAME)  # 初始化模型
+        self.client = OpenAI(api_key=ChatbotConfig.OPENAI_API_KEY)  # 初始化OpenAI客户端
     
     def get_or_create_thread(self, thread_id: Optional[str] = None, 
                             user=None, problem_id: Optional[int] = None,
@@ -119,9 +118,9 @@ class SQLChatbot:
         history = []
         for msg in trimmed_messages:
             if msg.message_type == 'human':
-                history.append({'role': 'user', 'parts': [msg.content]})
+                history.append({'role': 'user', 'content': msg.content})
             elif msg.message_type == 'ai':
-                history.append({'role': 'model', 'parts': [msg.content]})
+                history.append({'role': 'assistant', 'content': msg.content})
         
         return history
     
@@ -148,26 +147,26 @@ class SQLChatbot:
         history = self._prepare_history(thread)  # 准备历史对话
         previous_history = history[:-1] if history else []  # 排除刚添加的用户消息
         
-        chat = self.model.start_chat(  # 开始聊天
-            history=previous_history
+        # 构建消息列表
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(previous_history)
+        messages.append({"role": "user", "content": message})
+        
+        response = self.client.chat.completions.create(
+            model=ChatbotConfig.MODEL_NAME,
+            messages=messages,
+            temperature=ChatbotConfig.TEMPERATURE
         )
         
-        full_prompt = f"{system_prompt}\n\n用户提问：{message}" if not previous_history else message
-        
-        response = chat.send_message(
-            full_prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=ChatbotConfig.TEMPERATURE,
-            )
-        )
+        ai_content = response.choices[0].message.content
         
         ai_message = ChatMessage.objects.create(  # 保存AI回复
             thread=thread,
             message_type='ai',
-            content=response.text,
+            content=ai_content,
             metadata={
                 'model': ChatbotConfig.MODEL_NAME,
-                'finish_reason': response.candidates[0].finish_reason.name if response.candidates else None
+                'finish_reason': response.choices[0].finish_reason
             }
         )
         
@@ -201,25 +200,25 @@ class SQLChatbot:
         history = self._prepare_history(thread)  # 准备历史对话
         previous_history = history[:-1] if history else []  # 排除刚添加的用户消息
         
-        chat = self.model.start_chat(  # 开始聊天
-            history=previous_history
-        )
+        # 构建消息列表
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(previous_history)
+        messages.append({"role": "user", "content": message})
         
         full_response = []
-        full_prompt = f"{system_prompt}\n\n用户提问：{message}" if not previous_history else message
         
-        response = chat.send_message(
-            full_prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=ChatbotConfig.TEMPERATURE,
-            ),
+        stream = self.client.chat.completions.create(
+            model=ChatbotConfig.MODEL_NAME,
+            messages=messages,
+            temperature=ChatbotConfig.TEMPERATURE,
             stream=True
         )
         
-        for chunk in response:
-            if chunk.text:
-                full_response.append(chunk.text)
-                yield chunk.text
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                content = chunk.choices[0].delta.content
+                full_response.append(content)
+                yield content
         
         ChatMessage.objects.create(  # 保存完整的AI回复
             thread=thread,

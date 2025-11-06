@@ -3,7 +3,7 @@ import { APP_CONFIG, USER_CONFIG, LANGUAGE_CONFIG } from '../config/constants';
 
 const api = axios.create({ // Create axios instance with base config
   baseURL: APP_CONFIG.API_BASE_URL,
-  timeout: 60000, // 60秒超时，适应AI生成等耗时操作
+  timeout: 6000000, // 60秒超时，适应AI生成等耗时操作
   headers: {
     'Content-Type': 'application/json',
   },

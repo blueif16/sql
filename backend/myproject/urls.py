@@ -2,12 +2,10 @@ from django.contrib import admin  # Django 管理后台
 from django.urls import path, include  # URL 路径配置
 from django.http import HttpResponse  # HTTP 响应
 from rest_framework import routers  # REST framework 路由
-from learning.views import ThemeViewSet, SectionViewSet, ConceptViewSet, ProblemViewSet, UserProgressViewSet  # 导入视图
+from learning.views import ConceptViewSet, ProblemViewSet, UserProgressViewSet  # 导入视图
 
 # 创建路由器
 router = routers.DefaultRouter()
-router.register(r'themes', ThemeViewSet, basename='theme')
-router.register(r'sections', SectionViewSet, basename='section')
 router.register(r'concepts', ConceptViewSet, basename='concept')
 router.register(r'problems', ProblemViewSet, basename='problem')
 router.register(r'progress', UserProgressViewSet, basename='progress')
