@@ -1,18 +1,22 @@
 """
-Chatbot service using OpenAI API.
+Chatbot service using Google Gemini API.
 """
 
 import uuid
+import logging
 from typing import List, Dict, Optional, Generator
 from decouple import config  # 使用decouple读取.env文件
 from openai import OpenAI
+import google.generativeai as genai
 from .models import ChatThread, ChatMessage, Problem, Concept
+
+logger = logging.getLogger(__name__)
 
 
 class ChatbotConfig:
     """聊天机器人配置常量"""
-    OPENAI_API_KEY = config('OPENAI_API_KEY', default='')  # OpenAI API密钥（从.env文件读取）
-    MODEL_NAME = config('OPENAI_MODEL', default='gpt-4o')  # 模型名称
+    GOOGLE_API_KEY = config('GOOGLE_API_KEY', default='')  # Google API密钥（从.env文件读取）
+    MODEL_NAME = config('GEMINI_MODEL', default='gemini-2.5-flash')  # Gemini模型名称
     TEMPERATURE = float(config('CHAT_TEMPERATURE', default='0.7'))  # 生成温度
     DEFAULT_LANGUAGE = 'en'  # 默认语言
     
@@ -23,20 +27,23 @@ class ChatbotConfig:
 3. Analyze users' SQL queries, point out errors and provide improvement suggestions
 4. Provide practical SQL programming tips and best practices
 5. Provide targeted guidance based on the problem information and concept descriptions provided
+6. When converting natural language to SQL, ONLY generate SELECT statements. Never generate CREATE TABLE, INSERT, UPDATE, DELETE, or any DDL statements.
 
 When users ask questions, combine the problem requirements and concept knowledge to answer.
 If users submit SQL queries, help analyze their correctness and provide specific improvement suggestions.
+When asked to convert natural language to SQL, always respond with ONLY a SELECT statement that can be executed on existing tables.
 Please respond in a concise and friendly manner, using code examples when appropriate."""
 
 
 class SQLChatbot:
     """SQL学习聊天机器人"""
-    
+
     def __init__(self):
-        if not ChatbotConfig.OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY environment variable not set")  # API密钥未设置
-        
-        self.client = OpenAI(api_key=ChatbotConfig.OPENAI_API_KEY)  # 初始化OpenAI客户端
+        if not ChatbotConfig.GOOGLE_API_KEY:
+            raise ValueError("GOOGLE_API_KEY environment variable not set")  # API密钥未设置
+
+        genai.configure(api_key=ChatbotConfig.GOOGLE_API_KEY)  # 配置Google Gemini
+        self.client = genai.GenerativeModel(ChatbotConfig.MODEL_NAME)  # 初始化Gemini客户端
     
     def get_or_create_thread(self, thread_id: Optional[str] = None, 
                             user=None, problem_id: Optional[int] = None,
@@ -101,11 +108,9 @@ class SQLChatbot:
         if not messages:
             return []
         
-        total_tokens = 0
         trimmed = []
-        
+
         for msg in reversed(messages):  # 从最新消息开始
-            
             trimmed.insert(0, msg)
         
         return trimmed
@@ -125,8 +130,8 @@ class SQLChatbot:
         return history
     
     def chat(self, message: str, thread_id: Optional[str] = None,
-            user=None, problem_id: Optional[int] = None,
-            language: str = ChatbotConfig.DEFAULT_LANGUAGE) -> Dict[str, any]:
+             user=None, problem_id: Optional[int] = None,
+             language: str = ChatbotConfig.DEFAULT_LANGUAGE) -> Dict[str, any]:
         """同步聊天（非流式）"""
         thread = self.get_or_create_thread(thread_id, user, problem_id, language)  # 获取或创建线程
         
@@ -147,26 +152,40 @@ class SQLChatbot:
         history = self._prepare_history(thread)  # 准备历史对话
         previous_history = history[:-1] if history else []  # 排除刚添加的用户消息
         
-        # 构建消息列表
-        messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(previous_history)
-        messages.append({"role": "user", "content": message})
-        
-        response = self.client.chat.completions.create(
-            model=ChatbotConfig.MODEL_NAME,
-            messages=messages,
-            temperature=ChatbotConfig.TEMPERATURE
+        # 构建消息历史
+        history = []
+        if previous_history:
+            for msg in previous_history:
+                history.append({
+                    "role": "user" if msg["role"] == "user" else "model",
+                    "parts": [msg["content"]]
+                })
+
+        # 创建聊天会话
+        chat = self.client.start_chat(history=history)
+
+        # 构建完整提示
+        full_prompt = f"{system_prompt}\n\nUser: {message}"
+
+        response = chat.send_message(
+            full_prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=ChatbotConfig.TEMPERATURE
+            )
         )
-        
-        ai_content = response.choices[0].message.content
-        
+
+        ai_content = response.text
+
+        # Log AI response content for debugging SQL generation
+        logger.info(f"[Chatbot] AI Response Content: {ai_content}")
+
         ai_message = ChatMessage.objects.create(  # 保存AI回复
             thread=thread,
             message_type='ai',
             content=ai_content,
             metadata={
                 'model': ChatbotConfig.MODEL_NAME,
-                'finish_reason': response.choices[0].finish_reason
+                'provider': 'gemini'
             }
         )
         
@@ -178,8 +197,8 @@ class SQLChatbot:
         }
     
     def chat_stream(self, message: str, thread_id: Optional[str] = None,
-                   user=None, problem_id: Optional[int] = None,
-                   language: str = ChatbotConfig.DEFAULT_LANGUAGE) -> Generator[str, None, None]:
+                    user=None, problem_id: Optional[int] = None,
+                    language: str = ChatbotConfig.DEFAULT_LANGUAGE) -> Generator[str, None, None]:
         """流式聊天"""
         thread = self.get_or_create_thread(thread_id, user, problem_id, language)  # 获取或创建线程
         
@@ -200,32 +219,49 @@ class SQLChatbot:
         history = self._prepare_history(thread)  # 准备历史对话
         previous_history = history[:-1] if history else []  # 排除刚添加的用户消息
         
-        # 构建消息列表
-        messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(previous_history)
-        messages.append({"role": "user", "content": message})
-        
+        # 构建消息历史
+        history = []
+        if previous_history:
+            for msg in previous_history:
+                history.append({
+                    "role": "user" if msg["role"] == "user" else "model",
+                    "parts": [msg["content"]]
+                })
+
+        # 创建聊天会话
+        chat = self.client.start_chat(history=history)
+
+        # 构建完整提示
+        full_prompt = f"{system_prompt}\n\nUser: {message}"
+
         full_response = []
-        
-        stream = self.client.chat.completions.create(
-            model=ChatbotConfig.MODEL_NAME,
-            messages=messages,
-            temperature=ChatbotConfig.TEMPERATURE,
+
+        response = chat.send_message(
+            full_prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=ChatbotConfig.TEMPERATURE
+            ),
             stream=True
         )
-        
-        for chunk in stream:
-            if chunk.choices[0].delta.content:
-                content = chunk.choices[0].delta.content
+
+        for chunk in response:
+            if chunk.text:
+                content = chunk.text
                 full_response.append(content)
                 yield content
         
+        full_content = ''.join(full_response)
+
+        # Log streaming AI response content for debugging SQL generation
+        logger.info(f"[Chatbot] Streaming AI Response Content: {full_content}")
+
         ChatMessage.objects.create(  # 保存完整的AI回复
             thread=thread,
             message_type='ai',
-            content=''.join(full_response),
+            content=full_content,
             metadata={
                 'model': ChatbotConfig.MODEL_NAME,
+                'provider': 'gemini',
                 'streaming': True
             }
         )

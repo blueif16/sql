@@ -54,7 +54,7 @@ function AppContent() { // Main app content with routing
   if (isLoggingIn) { // Show loading while auto-login
     return (
       <div className="App h-screen flex items-center justify-center">
-        <div className="text-gray-600">加载中...</div>
+        <div className="text-gray-600">Loading...</div>
       </div>
     );
   }

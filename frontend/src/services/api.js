@@ -114,6 +114,7 @@ export const chatAPI = {
   sendMessage: (data) => api.post('/chat/message/', data), // Send chat message (non-streaming)
   getHistory: (threadId) => api.get('/chat/history/', { params: { thread_id: threadId } }), // Get chat history
   getThreads: () => api.get('/chat/threads/'), // Get user chat threads
+  evaluateSolution: (data) => api.post('/chat/evaluate_solution/', data), // Evaluate SQL solution
   streamMessage: async (data, onChunk, onDone, onError) => { // Stream chat message
     try {
       const headers = {

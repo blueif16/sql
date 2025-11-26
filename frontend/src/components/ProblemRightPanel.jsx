@@ -12,7 +12,8 @@ const ProblemRightPanel = ({ // Right panel for problem page
   currentInput,
   chatMode,
   lastResult,
-  leftPanelWidth
+  leftPanelWidth,
+  sqlExecutionResults
 }) => {
   const { t } = useLanguage();
   if (!problem) return null;
@@ -62,6 +63,7 @@ const ProblemRightPanel = ({ // Right panel for problem page
             chatMode={chatMode}
             lastResult={lastResult}
             isLoading={false}
+            sqlExecutionResults={sqlExecutionResults}
           />
         ) : (
           <LearnTab

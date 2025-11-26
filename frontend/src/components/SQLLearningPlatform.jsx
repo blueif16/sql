@@ -41,7 +41,7 @@ const SQLLearningPlatform = () => {
       setConcepts(data);
     } catch (error) {
       console.error('Failed to load concepts:', error);
-      addMessage('加载概念失败，请刷新页面重试。', 'ai');
+      addMessage('Failed to load concepts, please refresh the page and try again.', 'ai');
     } finally {
       setIsLoading(false);
     }

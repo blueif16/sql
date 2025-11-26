@@ -25,19 +25,22 @@ const ProblemDetailPage = ({ currentTheme, onThemeChange }) => { // Problem deta
   const [isDragging, setIsDragging] = useState(false); // Dragging state
   const [rightPanelTab, setRightPanelTab] = useState('practice'); // Right panel tab: practice or learn
   const [completedProblems, setCompletedProblems] = useState(0); // Number of completed problems
-  
+  const [sqlExecutionResults, setSqlExecutionResults] = useState(null); // SQL execution results for display
+
   const messagesEndRef = useRef(null);
 
   useEffect(() => { // Fetch problem data (includes concept info)
     const fetchData = async () => {
       if (!problemId) {
-        setError('未指定题目 ID');
+        setError('No problem ID specified');
         setLoading(false);
         return;
       }
 
       try {
         setLoading(true);
+        // Clear previous SQL execution results when loading a new problem
+        setSqlExecutionResults(null);
         const problemData = await problemAPI.getProblem(problemId);
         setProblem(problemData);
         setConceptInfo(problemData.concept_info); // Concept info already included
@@ -45,17 +48,17 @@ const ProblemDetailPage = ({ currentTheme, onThemeChange }) => { // Problem deta
         setMessages([{
           id: 1,
           type: 'ai',
-          content: `欢迎！这是一道关于 ${problemData.primary_concept || 'SQL'} 的题目。\n\n仔细阅读右侧的题目描述，然后在下方输入你的 SQL 查询。\n\n如果需要帮助，可以切换到 Learn 标签查看相关概念。`,
+          content: `Welcome! This is a problem about ${problemData.primary_concept || 'SQL'}.\n\nPlease read the problem description on the right, then enter your SQL query below.\n\nIf you need help, switch to the Learn tab to view related concepts.`,
           timestamp: new Date()
         }]);
         
       } catch (err) {
         console.error('Failed to fetch problem:', err);
-        setError('加载题目失败，请稍后重试。');
+        setError('Failed to load problem, please try again later.');
         setMessages([{
           id: 1,
           type: 'ai',
-          content: '抱歉，加载题目时出错了。',
+          content: 'Sorry, there was an error loading the problem.',
           timestamp: new Date()
         }]);
       } finally {
@@ -115,22 +118,22 @@ const ProblemDetailPage = ({ currentTheme, onThemeChange }) => { // Problem deta
     const userAnswer = queryText || currentInput.trim();
     if (!userAnswer || !problem) return;
 
-    if (!queryText) { // 如果不是从AI聊天传入的，添加消息
+    if (!queryText) { // If not from AI chat, add message
       addMessage(userAnswer, 'user');
       setCurrentInput('');
     }
-    
-    if (chatMode === 'ask' && !queryText) { // 仅在非AI模式下处理问答
+
+    if (chatMode === 'ask' && !queryText) { // Only handle Q&A in non-AI mode
       setTimeout(() => {
         const input = userAnswer.toLowerCase();
         if (input.includes('select')) {
-          addMessage(`SELECT 用于选择你想要的列。在 ${problem.primary_concept || 'SQL'} 中，SELECT 指定你要查询的数据。`, 'ai');
+          addMessage(`SELECT is used to choose the columns you want. In ${problem.primary_concept || 'SQL'}, SELECT specifies the data you want to query.`, 'ai');
         } else if (input.includes('from')) {
-          addMessage("FROM 指定从哪个表获取数据。使用正确的表名，如 'customers' 或 'products'。", 'ai');
+          addMessage("FROM specifies which table to get data from. Use correct table names like 'customers' or 'products'.", 'ai');
         } else if (input.includes('where')) {
-          addMessage("WHERE 用于根据条件筛选数据。使用 = 进行精确匹配，使用 AND 组合多个条件。", 'ai');
+          addMessage("WHERE is used to filter data based on conditions. Use = for exact matches, and AND to combine multiple conditions.", 'ai');
         } else {
-          addMessage(`我可以帮你理解 ${problem.primary_concept || 'SQL'} 的相关概念！问我任何问题吧。`, 'ai');
+          addMessage(`I can help you understand concepts related to ${problem.primary_concept || 'SQL'}! Ask me any questions.`, 'ai');
         }
       }, 800);
       return;
@@ -155,34 +158,38 @@ const ProblemDetailPage = ({ currentTheme, onThemeChange }) => { // Problem deta
 
       setTimeout(() => {
         if (isCorrect) {
-          addMessage("正确！做得好。", 'ai');
+          addMessage("Correct! Well done.", 'ai');
           setCompletedProblems(prev => prev + 1);
-          addMessage("太棒了！你已经完成这道题目。可以尝试其他题目，或者继续练习。", 'ai');
+          addMessage("Great! You've completed this problem. Try other problems or continue practicing.", 'ai');
           setWaitingForNext(true);
         } else {
-          addMessage("不正确。请检查输出对比，再试一次。", 'ai');
+          addMessage("Incorrect. Please check the output comparison and try again.", 'ai');
         }
       }, 500);
       
     } catch (err) {
       console.error('Failed to submit query:', err);
-      addMessage("提交查询时出错，请稍后重试。", 'ai');
+      addMessage("Error submitting query, please try again later.", 'ai');
     }
   };
 
   const handleRetry = () => { // Handle retry action
     setWaitingForNext(false);
     setLastResult(null);
-    addMessage("再试一次！", 'user');
+    addMessage("Try again!", 'user');
     setTimeout(() => {
-      addMessage("加油！你可以的！", 'ai');
+      addMessage("You've got this!", 'ai');
     }, 500);
+  };
+
+  const handleSqlResults = (results) => { // Handle SQL execution results
+    setSqlExecutionResults(results);
   };
 
   if (loading) {
     return (
       <div className="h-full bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">加载中...</div>
+        <div className="text-gray-600">Loading...</div>
       </div>
     );
   }
@@ -190,7 +197,7 @@ const ProblemDetailPage = ({ currentTheme, onThemeChange }) => { // Problem deta
   if (error || !problem) {
     return (
       <div className="h-full bg-gray-50 flex items-center justify-center">
-        <div className="text-red-600">{error || '未找到题目'}</div>
+        <div className="text-red-600">{error || 'Problem not found'}</div>
       </div>
     );
   }
@@ -249,6 +256,8 @@ const ProblemDetailPage = ({ currentTheme, onThemeChange }) => { // Problem deta
           problemId={problemId}
           leftPanelWidth={leftPanelWidth}
           onQuerySubmit={handleSubmitAnswer}
+          sqlSchema={problem?.sql_schema}
+          onSqlResults={handleSqlResults}
         />
       ) : (
         <ChatInterface
@@ -284,6 +293,7 @@ const ProblemDetailPage = ({ currentTheme, onThemeChange }) => { // Problem deta
         chatMode={chatMode}
         lastResult={lastResult}
         leftPanelWidth={leftPanelWidth}
+        sqlExecutionResults={sqlExecutionResults}
       />
     </div>
   );

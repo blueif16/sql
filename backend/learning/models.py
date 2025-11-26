@@ -172,7 +172,7 @@ class Problem(models.Model):
     primary_concept = models.CharField(max_length=50)
     secondary_concepts = models.JSONField(default=list, blank=True)  # ["SUBQUERIES","ORDER_BY"]
     interest_tags = models.JSONField(default=list, blank=True)  # ["movie","entertainment"]
-    sql_schema = models.TextField()  # Markdown格式的表结构和示例数据
+    sql_schema = models.TextField()  # sql source code for the problem that can be executed directly
     is_active = models.BooleanField(default=True)
     
     def __str__(self):

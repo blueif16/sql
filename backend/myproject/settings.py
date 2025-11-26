@@ -80,7 +80,7 @@ AUTH_PASSWORD_VALIDATORS = [  # 密码验证器
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-LANGUAGE_CODE = 'zh-hans'  # 语言代码（简体中文）
+LANGUAGE_CODE = 'en-us'  # 语言代码（英语）
 TIME_ZONE = 'Asia/Shanghai'  # 时区（上海）
 USE_I18N = True  # 启用国际化
 USE_TZ = True  # 启用时区支持

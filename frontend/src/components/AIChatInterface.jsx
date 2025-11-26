@@ -1,37 +1,54 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, BookOpen, CheckCircle, RotateCcw, Bot, User, Loader } from 'lucide-react';
+import { Send, BookOpen, CheckCircle, RotateCcw, Bot, User, Loader, Play, X, CheckCircle2, XCircle } from 'lucide-react';
 import { chatAPI } from '../services/api';
-import { CHAT_CONFIG, UI_TEXTS } from '../config/constants'; // 导入UI文本配置
-import { useLanguage } from '../hooks/useLanguage'; // 导入语言钩子
+import { CHAT_CONFIG, UI_TEXTS } from '../config/constants'; // Import UI text configuration
+import { useLanguage } from '../hooks/useLanguage'; // Import language hook
+import SQLTable from '../../components/SQLTable'; // Import SQLTable component
 
 const AIChatInterface = ({
-  problemId = null, // 关联的题目ID
-  leftPanelWidth = 50, // 左侧面板宽度
-  onQuerySubmit = null, // SQL查询提交回调
+  problemId = null, // Associated problem ID
+  leftPanelWidth = 50, // Left panel width
+  onQuerySubmit = null, // SQL query submission callback
+  sqlSchema = '', // SQL schema for data setup
+  onSqlResults = null, // SQL execution results callback
 }) => {
-  const { language } = useLanguage(); // 获取当前语言
-  const t = UI_TEXTS[language].aiChat; // 获取当前语言的文本配置
-  const [messages, setMessages] = useState([]); // 消息列表
-  const [currentInput, setCurrentInput] = useState(''); // 当前输入
-  const [threadId, setThreadId] = useState(null); // 会话ID
-  const [isLoading, setIsLoading] = useState(false); // 加载状态
-  const [isStreaming, setIsStreaming] = useState(false); // 流式响应状态
-  const [chatMode, setChatMode] = useState('ask'); // 聊天模式: ask或solve
-  const messagesEndRef = useRef(null);
+  const { language } = useLanguage(); // Get current language
+  const t = UI_TEXTS[language].aiChat; // Get current language text configuration
+  const [messages, setMessages] = useState([]); // Message list
+  const [currentInput, setCurrentInput] = useState(''); // Current input
+  const [threadId, setThreadId] = useState(null); // Session ID
+  const [isLoading, setIsLoading] = useState(false); // Loading state
+  const [isStreaming, setIsStreaming] = useState(false); // Streaming response state
+  const [chatMode, setChatMode] = useState('ask'); // Chat mode: ask or solve
+  const [internalSqlSchema, setInternalSqlSchema] = useState(''); // SQL schema for execution
+  const [sqlResults, setSqlResults] = useState(null); // SQL execution results
+  const [isExecutingSQL, setIsExecutingSQL] = useState(false); // SQL execution state
+  const [sqlManager, setSqlManager] = useState(null); // SQL manager instance
+  const [evaluationResult, setEvaluationResult] = useState(null); // Evaluation result (correct/wrong + explanation)
+  const [showEvaluationOverlay, setShowEvaluationOverlay] = useState(false); // Show evaluation overlay
+  const [isEvaluating, setIsEvaluating] = useState(false); // Evaluation loading state
+  const messagesContainerRef = useRef(null);
+  const sqlTableRef = useRef(null); // Reference to SQLTable component
 
-  useEffect(() => { // 初始化会话
+  useEffect(() => { // Initialize session
     const storedThreadId = localStorage.getItem(`${CHAT_CONFIG.STORAGE_KEY}_${problemId || 'general'}`);
     if (storedThreadId) {
       setThreadId(storedThreadId);
       loadHistory(storedThreadId);
     } else if (problemId) {
-      initializeProblemChat(); // 如果有problemId但没有会话，创建新会话
+      initializeProblemChat(); // If there's a problemId but no session, create new session
     } else {
-      fetchWelcomeMessage(); // 从后端获取欢迎消息
+      fetchWelcomeMessage(); // Get welcome message from backend
     }
   }, [problemId]);
 
-  const initializeProblemChat = async () => { // 初始化带问题上下文的会话
+  useEffect(() => { // Set SQL schema
+    if (sqlSchema) {
+      setInternalSqlSchema(sqlSchema);
+    }
+  }, [sqlSchema]);
+
+  const initializeProblemChat = async () => { // Initialize session with problem context
     try {
       setIsLoading(true);
       const response = await chatAPI.sendMessage({
@@ -67,7 +84,7 @@ const AIChatInterface = ({
     }
   };
 
-  const fetchWelcomeMessage = async () => { // 从后端获取欢迎消息
+  const fetchWelcomeMessage = async () => { // Get welcome message from backend
     try {
       setIsLoading(true);
       const welcomeMessageText = problemId 
@@ -95,7 +112,7 @@ const AIChatInterface = ({
       ]);
     } catch (error) {
       console.error('Failed to fetch welcome message:', error);
-      // 回退到默认欢迎消息
+      // Fallback to default welcome message
       setMessages([{
         id: Date.now(),
         type: 'ai',
@@ -109,7 +126,7 @@ const AIChatInterface = ({
     }
   };
 
-  const loadHistory = async (tid) => { // 加载历史消息
+  const loadHistory = async (tid) => { // Load chat history
     try {
       const data = await chatAPI.getHistory(tid);
       if (data.messages && data.messages.length > 0) {
@@ -128,15 +145,15 @@ const AIChatInterface = ({
     }
   };
 
-  const scrollToBottom = () => { // 滚动到底部
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToTop = () => { // Scroll to top
+    messagesContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    scrollToTop();
   }, [messages]);
 
-  const addMessage = (content, type = 'ai', id = null) => { // 添加消息
+  const addMessage = (content, type = 'ai', id = null) => { // Add message
     const newMessage = {
       id: id || Date.now() + Math.random(),
       type,
@@ -147,7 +164,7 @@ const AIChatInterface = ({
     return newMessage;
   };
 
-  const updateLastMessage = (content) => { // 更新最后一条消息
+  const updateLastMessage = (content) => { // Update last message
     setMessages(prev => {
       const newMessages = [...prev];
       if (newMessages.length > 0) {
@@ -157,18 +174,25 @@ const AIChatInterface = ({
     });
   };
 
-  const handleSendMessage = async () => { // 发送消息
-    if (!currentInput.trim() || isLoading || isStreaming) return;
+  const handleSQLTableReady = (manager) => { // SQLTable ready callback
+    setSqlManager(manager);
+    console.log('SQL manager ready for execution');
+  };
+
+  const handleSendMessage = async () => { // Send message
+    if (!currentInput.trim() || isLoading || isStreaming || isExecutingSQL) return;
 
     const userMessage = currentInput.trim();
     setCurrentInput('');
     addMessage(userMessage, 'user');
 
-    if (chatMode === 'solve' && onQuerySubmit) { // 如果是解题模式且有回调，调用提交SQL
-      onQuerySubmit(userMessage);
-      setTimeout(() => {
-        addMessage(t.querySubmitted, 'ai');
-      }, 500);
+    if (chatMode === 'solve' && problemId) { // If solve mode, evaluate the SQL solution
+      await handleSolutionEvaluation(userMessage);
+      return;
+    }
+
+    if (chatMode === 'execute' && sqlSchema) { // If execute mode, try to execute SQL or translate natural language
+      await handleSQLExecution(userMessage);
       return;
     }
 
@@ -179,34 +203,34 @@ const AIChatInterface = ({
       language: CHAT_CONFIG.DEFAULT_LANGUAGE
     };
 
-    if (CHAT_CONFIG.USE_STREAMING) { // 使用流式响应
+    if (CHAT_CONFIG.USE_STREAMING) { // Use streaming response
       setIsStreaming(true);
       const streamingMessageId = Date.now();
       addMessage('', 'ai', streamingMessageId);
-      
+
       let fullResponse = '';
-      
+
       await chatAPI.streamMessage(
         requestData,
-        (chunk) => { // 接收到数据块
+        (chunk) => { // Received data chunk
           fullResponse += chunk;
           updateLastMessage(fullResponse);
         },
-        () => { // 流式响应完成
+        () => { // Streaming response completed
           setIsStreaming(false);
-          if (!threadId && fullResponse) { // 保存新的线程ID
+          if (!threadId && fullResponse) { // Save new thread ID
             const newThreadId = `thread_${Date.now()}`;
             setThreadId(newThreadId);
             localStorage.setItem(`${CHAT_CONFIG.STORAGE_KEY}_${problemId || 'general'}`, newThreadId);
           }
         },
-        (error) => { // 流式响应错误
+        (error) => { // Streaming response error
           console.error('Streaming error:', error);
           setIsStreaming(false);
           updateLastMessage(t.errorMessage);
         }
       );
-    } else { // 使用非流式响应
+    } else { // Use non-streaming response
       setIsLoading(true);
       try {
         const response = await chatAPI.sendMessage(requestData);
@@ -225,7 +249,158 @@ const AIChatInterface = ({
     }
   };
 
-  const handleKeyDown = (e) => { // 处理键盘事件
+  const handleSQLExecution = async (userMessage) => { // Handle SQL execution
+    setIsExecutingSQL(true);
+
+    try {
+      let sqlToExecute = userMessage;
+
+      // Check if it's a natural language query (doesn't contain SQL keywords)
+      const isNaturalLanguage = !/\b(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|FROM|WHERE|JOIN|GROUP|ORDER|HAVING|LIMIT)\b/i.test(userMessage);
+
+      if (isNaturalLanguage) {
+        // Translate natural language to SQL
+        addMessage('Converting natural language to SQL query...', 'ai');
+
+        const translationRequest = {
+          message: `Convert the following natural language query to a SQL SELECT statement only. Do NOT generate CREATE TABLE, INSERT, UPDATE, DELETE, or any other DDL/DML statements. Only return the SELECT query that can be executed on the existing database.
+
+Database schema:\n\n${internalSqlSchema}\n\nNatural language query: ${userMessage}\n\nReturn ONLY the SELECT statement, no explanations or markdown formatting.`,
+          thread_id: threadId,
+          problem_id: problemId,
+          language: CHAT_CONFIG.DEFAULT_LANGUAGE
+        };
+
+        console.log('SQL Translation Request:', translationRequest);
+        const translationResponse = await chatAPI.sendMessage(translationRequest);
+        console.log('SQL Translation Response:', translationResponse);
+        console.log('Backend returned SQL:', translationResponse.message);
+
+        sqlToExecute = translationResponse.message;
+
+        // Extract SQL statement (remove possible markdown code blocks)
+        sqlToExecute = sqlToExecute.replace(/```sql\s*/i, '').replace(/```\s*$/, '').trim();
+
+        console.log('Extracted SQL to execute:', sqlToExecute);
+        addMessage(`Generated SQL query:\n\`\`\`sql\n${sqlToExecute}\n\`\`\``, 'ai');
+      }
+
+      // Execute SQL query
+      addMessage('Executing SQL query...', 'ai');
+
+      if (sqlManager) {
+        console.log('SQL Manager available, tables:', sqlManager.tables);
+
+        // Ensure schema is loaded - only load on first execution
+        if (internalSqlSchema && !sqlManager.tables.size) {
+          console.log('Loading schema for first time:', internalSqlSchema);
+          try {
+            sqlManager.runSQL(internalSqlSchema);
+            console.log('Schema loaded successfully');
+          } catch (error) {
+            console.warn('Schema loading failed (might already exist):', error.message);
+            // Try to continue anyway
+          }
+        }
+
+        // Check if it's a SELECT query
+        const trimmedSQL = sqlToExecute.trim().toUpperCase();
+        const isSelectQuery = trimmedSQL.startsWith('SELECT');
+
+        // Additional check: ensure no DDL statements
+        const hasDDLStatements = /\b(CREATE|DROP|ALTER|INSERT|UPDATE|DELETE)\b/i.test(sqlToExecute);
+
+        console.log('SQL validation:', {
+          startsWithSELECT: isSelectQuery,
+          hasDDLStatements: hasDDLStatements,
+          sqlPreview: sqlToExecute.substring(0, 100) + '...'
+        });
+
+        if (!isSelectQuery || hasDDLStatements) {
+          addMessage('Only SELECT queries are supported in execution mode. DDL statements (CREATE, DROP, ALTER, INSERT, UPDATE, DELETE) are not allowed. Please provide a SELECT statement.', 'ai');
+          console.error('Rejected SQL execution - not a SELECT query or contains DDL:', sqlToExecute);
+          return;
+        }
+
+        console.log('Executing SELECT query:', sqlToExecute);
+
+        console.log('About to execute SQL command:', sqlToExecute);
+        console.log('SQL command type check - starts with SELECT:', sqlToExecute.trim().toUpperCase().startsWith('SELECT'));
+
+        // 执行查询
+        const results = sqlManager.queryAsObjects(sqlToExecute);
+        console.log('Query results:', results);
+
+        // 传递结果给父组件用于右侧面板显示
+        if (onSqlResults) {
+          const sqlResultsData = {
+            columns: results && results.length > 0 ? Object.keys(results[0]) : [],
+            data: results || [],
+            sqlQuery: sqlToExecute,
+            timestamp: new Date()
+          };
+          onSqlResults(sqlResultsData);
+        }
+
+        // 格式化结果
+        if (results && results.length > 0) {
+          const columns = Object.keys(results[0]);
+          const formattedResults = results.slice(0, 10); // 限制显示前10行
+
+          let resultMessage = `Query results (showing first ${formattedResults.length} rows):\n\n`;
+          resultMessage += `| ${columns.join(' | ')} |\n`;
+          resultMessage += `| ${columns.map(() => '---').join(' | ')} |\n`;
+
+          formattedResults.forEach(row => {
+            resultMessage += `| ${columns.map(col => String(row[col] || 'NULL')).join(' | ')} |\n`;
+          });
+
+          if (results.length > 10) {
+            resultMessage += `\n... and ${results.length - 10} more rows`;
+          }
+
+          addMessage(resultMessage, 'ai');
+        } else {
+          addMessage('Query executed successfully, but returned no data.', 'ai');
+        }
+      } else {
+        addMessage('SQL execution environment not initialized, please try again later.', 'ai');
+      }
+
+    } catch (error) {
+      console.error('SQL execution error:', error);
+      addMessage(`SQL execution error: ${error.message}`, 'ai');
+    } finally {
+      setIsExecutingSQL(false);
+    }
+  };
+
+  const handleSolutionEvaluation = async (userSolution) => { // Handle solution evaluation
+    setIsEvaluating(true);
+
+    try {
+      const evaluationData = {
+        problem_id: problemId,
+        user_solution: userSolution,
+        language: CHAT_CONFIG.DEFAULT_LANGUAGE
+      };
+
+      console.log('Evaluating solution:', evaluationData);
+      const result = await chatAPI.evaluateSolution(evaluationData);
+      console.log('Evaluation result:', result);
+
+      setEvaluationResult(result);
+      setShowEvaluationOverlay(true);
+
+    } catch (error) {
+      console.error('Evaluation error:', error);
+      addMessage(`Evaluation failed: ${error.message || 'Unknown error'}`, 'ai');
+    } finally {
+      setIsEvaluating(false);
+    }
+  };
+
+  const handleKeyDown = (e) => { // Handle keyboard events
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
@@ -233,13 +408,24 @@ const AIChatInterface = ({
   };
 
   return (
+    <>
     <div className="flex flex-col relative h-full" style={{ width: `${leftPanelWidth}%` }}>
-      {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 tiny-scrollbar" style={{ paddingBottom: '80px' }}>
+      {/* Hidden SQLTable for execution */}
+      <div style={{ display: 'none' }}>
+        <SQLTable
+          ref={sqlTableRef}
+          sqlCode={sqlSchema}
+          autoExecute={false}
+          onReady={handleSQLTableReady}
+        />
+      </div>
+
+      {/* Message list */}
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 tiny-scrollbar" style={{ paddingBottom: '80px' }}>
         {messages.map((message) => (
           <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`flex items-start gap-2 max-w-[85%] ${message.type === 'user' ? 'flex-row-reverse' : ''}`}>
-              {/* 头像 */}
+              {/* Avatar */}
               <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
                 message.type === 'user' ? 'bg-gray-600' : 'bg-blue-500'
               }`}>
@@ -250,7 +436,7 @@ const AIChatInterface = ({
                 )}
               </div>
               
-              {/* 消息内容 */}
+              {/* Message content */}
               <div className={`px-4 py-2 rounded-lg ${
                 message.type === 'user' 
                   ? 'bg-gray-200 text-gray-800' 
@@ -264,57 +450,77 @@ const AIChatInterface = ({
           </div>
         ))}
         
-        {/* 加载指示器 */}
-        {(isLoading || isStreaming) && (
+        {/* Loading indicator */}
+        {(isLoading || isStreaming || isExecutingSQL || isEvaluating) && (
           <div className="flex justify-start">
             <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-100">
               <Loader size={16} className="animate-spin text-blue-500" />
-              <span className="text-sm text-gray-600">{t.thinking}</span>
+              <span className="text-sm text-gray-600">
+                {isEvaluating ? 'Evaluating your solution...' :
+                 isExecutingSQL ? 'Executing SQL query...' : t.thinking}
+              </span>
             </div>
           </div>
         )}
-
-        <div ref={messagesEndRef} />
       </div>
 
-      {/* 输入区域 */}
+      {/* Input area */}
       <div className="absolute bottom-0 left-0 right-0 p-3 bg-gray-50 border-t border-gray-200">
         <div className="relative">
-          {/* 模式切换按钮 */}
-          {problemId && onQuerySubmit && (
+          {/* Mode toggle buttons */}
+          {problemId && (
             <div className="flex gap-1 mb-2">
               <button
                 onClick={() => setChatMode('ask')}
                 className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
-                  chatMode === 'ask' 
-                    ? 'bg-blue-500 text-white' 
+                  chatMode === 'ask'
+                    ? 'bg-blue-500 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
                 <BookOpen size={14} className="inline mr-1" />
                 {t.modeAsk}
               </button>
-              <button
-                onClick={() => setChatMode('solve')}
-                className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
-                  chatMode === 'solve' 
-                    ? 'bg-blue-500 text-white' 
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                <CheckCircle size={14} className="inline mr-1" />
-                {t.modeSolve}
-              </button>
+              {onQuerySubmit && (
+                <button
+                  onClick={() => setChatMode('solve')}
+                  className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
+                    chatMode === 'solve'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  <CheckCircle size={14} className="inline mr-1" />
+                  {t.modeSolve}
+                </button>
+              )}
+              {sqlSchema && (
+                <button
+                  onClick={() => setChatMode('execute')}
+                  className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
+                    chatMode === 'execute'
+                      ? 'bg-green-500 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  <Play size={14} className="inline mr-1" />
+                  Execute SQL
+                </button>
+              )}
             </div>
           )}
           
-          {/* 输入框 */}
+          {/* Input box */}
           <div className="flex gap-2">
             <textarea
               value={currentInput}
               onChange={(e) => setCurrentInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={chatMode === 'solve' ? t.placeholderSolve : t.placeholderAsk}
+              placeholder={
+                chatMode === 'solve' ? t.placeholderSolve :
+                chatMode === 'execute' ? 'Enter SQL query or natural language description...' :
+                t.placeholderAsk
+              }
               className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               style={{ 
                 minHeight: '40px',
@@ -325,7 +531,7 @@ const AIChatInterface = ({
             />
             <button
               onClick={handleSendMessage}
-              disabled={!currentInput.trim() || isLoading || isStreaming}
+              disabled={!currentInput.trim() || isLoading || isStreaming || isExecutingSQL}
               className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
             >
               <Send size={16} />
@@ -335,6 +541,91 @@ const AIChatInterface = ({
         </div>
       </div>
     </div>
+
+    {/* Evaluation Result Overlay */}
+    {showEvaluationOverlay && evaluationResult && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">
+                {t.evaluationTitle || 'Solution Evaluation'}
+              </h2>
+              <button
+                onClick={() => setShowEvaluationOverlay(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className={`mb-6 p-4 rounded-lg border-2 ${
+              evaluationResult.is_correct
+                ? 'bg-green-50 border-green-200'
+                : 'bg-red-50 border-red-200'
+            }`}>
+              <div className="flex items-center gap-3">
+                {evaluationResult.is_correct ? (
+                  <CheckCircle2 size={32} className="text-green-600" />
+                ) : (
+                  <XCircle size={32} className="text-red-600" />
+                )}
+                <div>
+                  <h3 className={`text-lg font-semibold ${
+                    evaluationResult.is_correct ? 'text-green-800' : 'text-red-800'
+                  }`}>
+                    {evaluationResult.is_correct
+                      ? (t.correctTitle || 'Correct Solution!')
+                      : (t.incorrectTitle || 'Incorrect Solution')}
+                  </h3>
+                  <p className={`text-sm ${
+                    evaluationResult.is_correct ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {evaluationResult.problem_title}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <h4 className="text-lg font-medium text-gray-900 mb-2">
+                {t.explanation || 'Explanation'}:
+              </h4>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-gray-700 whitespace-pre-wrap">
+                  {evaluationResult.explanation}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowEvaluationOverlay(false);
+                  setEvaluationResult(null);
+                }}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                {t.close || 'Close'}
+              </button>
+              {!evaluationResult.is_correct && (
+                <button
+                  onClick={() => {
+                    setShowEvaluationOverlay(false);
+                    setEvaluationResult(null);
+                    setChatMode('ask');
+                  }}
+                  className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  {t.askForHelp || 'Ask for Help'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 

@@ -45,9 +45,9 @@ def auto_login(request):
                 'language': 'en'
             }
         )
-        
-        # 如果用户已存在但语言未设置，更新为英文
-        if not created and not user.language:
+
+        # 确保默认用户始终使用英文
+        if user.language != 'en':
             user.language = 'en'
             user.save()
         
@@ -412,12 +412,12 @@ class ProblemViewSet(viewsets.ReadOnlyModelViewSet):
             logger.info(f"[ProblemViewSet.generate] 生成的问题类型: {type(generated_problem)}")
             problem_dict = generated_problem.model_dump()
             logger.info(f"[ProblemViewSet.generate] model_dump完成")
-            logger.info(f"[ProblemViewSet.generate] 字段列表: {list(problem_dict.keys())}")
+            logger.info(f"[ProblemViewSet.generate] fields list: {list(problem_dict.keys())}")
             
             sql_schema = problem_dict.get('sql_schema')
-            logger.info(f"[ProblemViewSet.generate] sql_schema类型: {type(sql_schema)}")
-            logger.info(f"[ProblemViewSet.generate] sql_schema长度: {len(sql_schema) if isinstance(sql_schema, str) else 'N/A'} 字符")
-            logger.info(f"[ProblemViewSet.generate] sql_schema预览: {sql_schema[:300] if isinstance(sql_schema, str) else sql_schema}...")
+            logger.info(f"[ProblemViewSet.generate] sql_schema type: {type(sql_schema)}")
+            logger.info(f"[ProblemViewSet.generate] sql_schema content length: {len(sql_schema) if isinstance(sql_schema, str) else 'N/A'} characters")
+            logger.info(f"[ProblemViewSet.generate] sql_schema content: {sql_schema}")
             
             problem = Problem.objects.create(**problem_dict)
             
@@ -719,3 +719,65 @@ class ChatViewSet(viewsets.ViewSet):
         
         serializer = ChatThreadSerializer(threads, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def evaluate_solution(self, request):
+        """Evaluate user's SQL solution for a problem"""
+        print(f"\n========== SOLUTION EVALUATION REQUEST ==========")
+        print(f"Request data: {request.data}")
+
+        required_fields = ['problem_id', 'user_solution']
+        for field in required_fields:
+            if field not in request.data:
+                return Response(
+                    {'error': f'{field} is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        try:
+            problem_id = request.data['problem_id']
+            user_solution = request.data['user_solution']
+
+            # Get problem details
+            try:
+                problem = Problem.objects.get(id=problem_id, is_active=True)
+            except Problem.DoesNotExist:
+                return Response(
+                    {'error': 'Problem not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            print(f"Evaluating solution for problem: {problem.title}")
+
+            # Initialize problem generator for evaluation
+            generator = ProblemGenerator()
+
+            # Get user language preference
+            language = 'en'
+            if request.user.is_authenticated and hasattr(request.user, 'language') and request.user.language:
+                language = request.user.language
+            elif request.data.get('language'):
+                language = request.data.get('language')
+
+            # Evaluate the solution
+            evaluation = generator.evaluate_solution(
+                problem_description=problem.description,
+                problem_schema=problem.sql_schema,
+                user_solution=user_solution,
+                language=language
+            )
+
+            return Response({
+                'is_correct': evaluation.is_correct,
+                'explanation': evaluation.explanation,
+                'problem_title': problem.title
+            })
+
+        except Exception as e:
+            print(f"❌ Evaluation error: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {'error': f'Evaluation failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
